@@ -119,6 +119,7 @@ def create_users_app():
             #additional user data not asked during onboarding
             data["bio"] = data.get("bio", "")
             data["imageUrl"] = data.get("imageUrl", "")
+            data["isAdmin"] = data.get("isAdmin", False)
             if data.get("gender") is None:
                 data["gender"] = "N/A"
 
