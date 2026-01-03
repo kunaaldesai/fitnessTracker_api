@@ -24,18 +24,6 @@ def create_users_app():
                 }), 404
             user = doc.to_dict()
             user["id"] = id
-            friend_ids = user.get("friends", [])
-            if not isinstance(friend_ids, list):
-                friend_ids = []
-            user["friends"] = []
-            for friend_id in friend_ids:
-                friend_doc = db.collection("users").document(friend_id).get()
-                if friend_doc.exists:
-                    friend_data = friend_doc.to_dict()
-                    user["friends"].append({
-                        "id": friend_id,
-                        "name": friend_data.get("name", "Unknown")
-                    })
             return jsonify(user), 200
         except Exception as e:
             return jsonify({
@@ -129,15 +117,10 @@ def create_users_app():
                 data["lastName"] = last_name
             
             #additional user data not asked during onboarding
-            data["affiliations"] = data.get("affiliations", "")
             data["bio"] = data.get("bio", "")
-            data["favoritePlaces"] = data.get("favoritePlaces", [])
-            data["playFrequency"] = data.get("playFrequency", "Monthly")
-            data["preferredEventTypes"] = data.get("preferredEventTypes", [])
             data["imageUrl"] = data.get("imageUrl", "")
             if data.get("gender") is None:
                 data["gender"] = "N/A"
-
 
             uid = data["id"]
             db.collection('users').document(uid).create(data)
