@@ -1,0 +1,59 @@
+# Python-specific ignores
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+*.sqlite3
+
+# Virtual environment folders
+env/
+venv/
+ENV/
+.VENV/
+
+# Logs and debugging
+*.log
+*.pot
+*.pyc
+*.coverage
+*.mypy_cache/
+*.pytest_cache/
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Editor-specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Firebase-specific ignores
+.node_modules/
+firebase-debug.log
+firebase-error.log
+firebase-debug.*
+firebase-error.*
+
+# Deployment and configuration files
+.firebase/
+functions/lib/
+functions/node_modules/
+
+# Local environment
+*.env
+*.local
+
+# Temporary files
+*.tmp
+*.temp
+*.orig
+*.rej
+
+# General OS-generated files
+.DS_Store
+Thumbs.db

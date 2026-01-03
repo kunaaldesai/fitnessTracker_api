@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "fitness-tracker-39bca",
+    "staging": "fitness-tracker-39bca",
+    "prod": "fitness-tracker-39bca"
+  }
+}
