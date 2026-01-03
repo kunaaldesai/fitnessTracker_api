@@ -83,5 +83,12 @@ ERROR_CODES = {
     "DIRECT_MESSAGE_RECIPIENT_REQUIRED": {"code": 8101, "message": "Recipient ID is required"},
     "DIRECT_MESSAGE_TEXT_REQUIRED": {"code": 8102, "message": "Message text is required"},
     "DIRECT_MESSAGE_FORBIDDEN": {"code": 8103, "message": "You do not have access to this conversation"},
-    "DIRECT_MESSAGE_NOT_FOUND": {"code": 8104, "message": "Conversation not found"}
+    "DIRECT_MESSAGE_NOT_FOUND": {"code": 8104, "message": "Conversation not found"},
+
+    # Fitness errors
+    "EXERCISE_NOT_FOUND": {"code": 9001, "message": "Exercise not found"},
+    "WORKOUT_NOT_FOUND": {"code": 9002, "message": "Workout not found"},
+    "WORKOUT_ITEM_NOT_FOUND": {"code": 9003, "message": "Workout exercise not found"},
+    "SET_NOT_FOUND": {"code": 9004, "message": "Set not found"},
+    "PR_UPDATE_FAILED": {"code": 9005, "message": "Could not update personal record"}
 }
