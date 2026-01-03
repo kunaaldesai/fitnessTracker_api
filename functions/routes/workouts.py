@@ -3,95 +3,18 @@ from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
 from datetime import datetime
+from helpers.workouts_helpers import (
+    parse_bool,
+    compute_rpe,
+    get_workout_ref,
+    get_item_ref,
+    attach_sets,
+    update_pr_if_needed,
+)
 
 
 def create_workouts_app():
     workoutsApp = Flask(__name__)
-
-    def _parse_bool(value, default=False):
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        return str(value).lower() in ["true", "1", "yes", "y", "t"]
-
-    def _compute_rpe(rir_value, rpe_value):
-        if rpe_value is not None:
-            return rpe_value
-        if rir_value is None:
-            return None
-        try:
-            return max(1.0, 10 - float(rir_value))
-        except (TypeError, ValueError):
-            return None
-
-    def _get_workout_ref(user_id, workout_id):
-        workout_ref = db.collection("users").document(user_id).collection("workouts").document(workout_id)
-        workout_doc = workout_ref.get()
-        if not workout_doc.exists:
-            return None, None
-        return workout_ref, workout_doc
-
-    def _get_item_ref(user_id, workout_id, item_id):
-        workout_ref, workout_doc = _get_workout_ref(user_id, workout_id)
-        if workout_ref is None:
-            return None, None, None
-        item_ref = workout_ref.collection("items").document(item_id)
-        item_doc = item_ref.get()
-        if not item_doc.exists:
-            return workout_ref, None, None
-        return workout_ref, item_ref, item_doc
-
-    def _attach_sets(item_ref, include_sets):
-        if not include_sets:
-            return []
-        sets_ref = item_ref.collection("sets")
-        sets = []
-        for set_doc in sets_ref.order_by("createdAt").stream():
-            set_data = set_doc.to_dict()
-            set_data["id"] = set_doc.id
-            sets.append(set_data)
-        return sets
-
-    def _update_pr_if_needed(user_id, exercise_id, set_payload, workout_id, workout_exercise_id, set_id):
-        try:
-            prs_ref = db.collection("users").document(user_id).collection("prs").document(exercise_id)
-            existing = prs_ref.get()
-            existing_data = existing.to_dict() if existing.exists else {}
-            existing_weight = existing_data.get("weight", 0) or 0
-            existing_reps = existing_data.get("reps", 0) or 0
-
-            incoming_weight = set_payload.get("weight", 0) or 0
-            incoming_reps = set_payload.get("reps", 0) or 0
-
-            better_pr = bool(set_payload.get("isPR"))
-            if not better_pr:
-                if incoming_weight > existing_weight:
-                    better_pr = True
-                elif incoming_weight == existing_weight and incoming_reps > existing_reps:
-                    better_pr = True
-
-            if better_pr:
-                pr_payload = {
-                    "exerciseId": exercise_id,
-                    "weight": incoming_weight,
-                    "reps": incoming_reps,
-                    "rir": set_payload.get("rir"),
-                    "rpe": set_payload.get("rpe"),
-                    "workoutId": workout_id,
-                    "workoutExerciseId": workout_exercise_id,
-                    "setId": set_id,
-                    "updatedAt": firestore.SERVER_TIMESTAMP,
-                }
-
-                if existing.exists and existing_data.get("createdAt"):
-                    pr_payload["createdAt"] = existing_data.get("createdAt")
-                else:
-                    pr_payload["createdAt"] = firestore.SERVER_TIMESTAMP
-
-                prs_ref.set(pr_payload, merge=True)
-        except Exception as pr_error:
-            raise pr_error
 
     # Exercises
     @workoutsApp.route('/users/<user_id>/exercises', methods=['POST', 'GET'])
@@ -113,7 +36,7 @@ def create_workouts_app():
                     "muscleGroups": data.get("muscleGroups", []),
                     "equipment": data.get("equipment", ""),
                     "notes": data.get("notes", ""),
-                    "archived": _parse_bool(data.get("archived"), False),
+                    "archived": parse_bool(data.get("archived"), False),
                     "createdAt": firestore.SERVER_TIMESTAMP,
                     "updatedAt": firestore.SERVER_TIMESTAMP
                 }
@@ -123,7 +46,7 @@ def create_workouts_app():
                     "id": exercise_ref.id
                 }), 200
 
-            include_archived = _parse_bool(request.args.get("includeArchived"), False)
+            include_archived = parse_bool(request.args.get("includeArchived"), False)
             exercise_query = db.collection("users").document(user_id).collection("exercises")
             if not include_archived:
                 exercise_query = exercise_query.where("archived", "==", False)
@@ -234,7 +157,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>', methods=['GET', 'PUT', 'DELETE'])
     def workout_detail(user_id, workout_id):
         try:
-            workout_ref, workout_doc = _get_workout_ref(user_id, workout_id)
+            workout_ref, workout_doc = get_workout_ref(user_id, workout_id)
             if workout_ref is None:
                 return jsonify({
                     "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
@@ -245,15 +168,15 @@ def create_workouts_app():
             if request.method == 'GET':
                 workout = workout_doc.to_dict()
                 workout["id"] = workout_doc.id
-                include_items = _parse_bool(request.args.get("includeItems"), False)
-                include_sets = _parse_bool(request.args.get("includeSets"), True)
+                include_items = parse_bool(request.args.get("includeItems"), False)
+                include_sets = parse_bool(request.args.get("includeSets"), True)
                 if include_items:
                     items_ref = workout_ref.collection("items")
                     items = []
                     for item_doc in items_ref.order_by("order").stream():
                         item = item_doc.to_dict()
                         item["id"] = item_doc.id
-                        item["sets"] = _attach_sets(item_doc.reference, include_sets)
+                        item["sets"] = attach_sets(item_doc.reference, include_sets)
                         items.append(item)
                     workout["items"] = items
                 return jsonify(workout), 200
@@ -297,7 +220,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items', methods=['POST', 'GET'])
     def workout_items(user_id, workout_id):
         try:
-            workout_ref, workout_doc = _get_workout_ref(user_id, workout_id)
+            workout_ref, workout_doc = get_workout_ref(user_id, workout_id)
             if workout_ref is None:
                 return jsonify({
                     "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
@@ -338,13 +261,13 @@ def create_workouts_app():
                     "id": item_ref.id
                 }), 200
 
-            include_sets = _parse_bool(request.args.get("includeSets"), False)
+            include_sets = parse_bool(request.args.get("includeSets"), False)
             items_ref = workout_ref.collection("items").order_by("order")
             items = []
             for item_doc in items_ref.stream():
                 item = item_doc.to_dict()
                 item["id"] = item_doc.id
-                item["sets"] = _attach_sets(item_doc.reference, include_sets)
+                item["sets"] = attach_sets(item_doc.reference, include_sets)
                 items.append(item)
             return jsonify(items), 200
         except Exception as e:
@@ -357,7 +280,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>', methods=['GET', 'PUT', 'DELETE'])
     def workout_item_detail(user_id, workout_id, item_id):
         try:
-            workout_ref, item_ref, item_doc = _get_item_ref(user_id, workout_id, item_id)
+            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
             if workout_ref is None:
                 return jsonify({
                     "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
@@ -372,10 +295,10 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'GET':
-                include_sets = _parse_bool(request.args.get("includeSets"), True)
+                include_sets = parse_bool(request.args.get("includeSets"), True)
                 item = item_doc.to_dict()
                 item["id"] = item_doc.id
-                item["sets"] = _attach_sets(item_ref, include_sets)
+                item["sets"] = attach_sets(item_ref, include_sets)
                 return jsonify(item), 200
 
             if request.method == 'PUT':
@@ -414,7 +337,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>/sets', methods=['POST', 'GET'])
     def workout_sets(user_id, workout_id, item_id):
         try:
-            workout_ref, item_ref, item_doc = _get_item_ref(user_id, workout_id, item_id)
+            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
             if workout_ref is None:
                 return jsonify({
                     "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
@@ -443,8 +366,8 @@ def create_workouts_app():
                     "reps": data.get("reps"),
                     "weight": data.get("weight", 0),
                     "rir": rir_value,
-                    "rpe": _compute_rpe(rir_value, rpe_value),
-                    "isPR": _parse_bool(data.get("isPR"), False),
+                    "rpe": compute_rpe(rir_value, rpe_value),
+                    "isPR": parse_bool(data.get("isPR"), False),
                     "notes": data.get("notes", ""),
                     "createdAt": firestore.SERVER_TIMESTAMP,
                     "updatedAt": firestore.SERVER_TIMESTAMP
@@ -454,7 +377,7 @@ def create_workouts_app():
                 set_ref.set(set_payload)
 
                 try:
-                    _update_pr_if_needed(user_id, item_doc.to_dict().get("exerciseId"), set_payload, workout_id, item_id, set_ref.id)
+                    update_pr_if_needed(user_id, item_doc.to_dict().get("exerciseId"), set_payload, workout_id, item_id, set_ref.id)
                 except Exception as pr_error:
                     return jsonify({
                         "error": ERROR_CODES["PR_UPDATE_FAILED"]["message"],
@@ -487,7 +410,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>/sets/<set_id>', methods=['PUT', 'DELETE'])
     def workout_set_detail(user_id, workout_id, item_id, set_id):
         try:
-            workout_ref, item_ref, item_doc = _get_item_ref(user_id, workout_id, item_id)
+            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
             if workout_ref is None:
                 return jsonify({
                     "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
@@ -520,7 +443,7 @@ def create_workouts_app():
                     }), 400
 
                 if "rpe" not in data and "rir" in data:
-                    data["rpe"] = _compute_rpe(data.get("rir"), None)
+                    data["rpe"] = compute_rpe(data.get("rir"), None)
 
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
                 set_ref.update(data)
