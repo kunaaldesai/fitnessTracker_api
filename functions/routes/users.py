@@ -42,20 +42,6 @@ def create_users_app():
                 # Include the document ID in the response
                 user = doc.to_dict()
                 user["id"] = doc.id
-                # Ensure "friends" field exists as a list
-                friend_ids = user.get("friends", [])
-                if not isinstance(friend_ids, list):
-                    friend_ids = []
-                # Populate friends list with names
-                user["friends"] = []
-                for friend_id in friend_ids:
-                    friend_doc = db.collection("users").document(friend_id).get()
-                    if friend_doc.exists:
-                        friend_data = friend_doc.to_dict()
-                        user["friends"].append({
-                            "id": friend_id,
-                            "name": friend_data.get("name", "Unknown")
-                        })
                 docData.append(user)
             return jsonify(docData), 200
         except Exception as e:
@@ -211,33 +197,9 @@ def create_users_app():
                 }), 404
             user = doc.to_dict()
             user["id"] = id
-
             viewer_id = request.args.get("viewerId")
             if not viewer_id:
                 viewer_id = getattr(g, "user", {}).get("uid") if hasattr(g, "user") else None
-
-            following_set = set()
-            if viewer_id:
-                viewer_doc = db.collection("users").document(viewer_id).get()
-                if viewer_doc.exists:
-                    viewer_data = viewer_doc.to_dict() or {}
-                    following_list = viewer_data.get("following", [])
-                    if isinstance(following_list, list):
-                        following_set = {str(fid) for fid in following_list if fid}
-
-            friend_ids = user.get("friends", [])
-            if not isinstance(friend_ids, list):
-                friend_ids = []
-            user["friends"] = []
-            for friend_id in friend_ids:
-                friend_doc = db.collection("users").document(friend_id).get()
-                if friend_doc.exists:
-                    friend_data = friend_doc.to_dict()
-                    user["friends"].append({
-                        "id": friend_id,
-                        "name": friend_data.get("name", "Unknown")
-                    })
-
             return jsonify(user), 200
         except Exception as e:
             return jsonify({
