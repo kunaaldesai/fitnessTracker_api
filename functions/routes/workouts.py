@@ -461,5 +461,75 @@ def create_workouts_app():
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
                 "details": f"Could not process set {set_id} for workout exercise {item_id}: {e}"
             }), 500
+        
+    # Firestore - getWorkout by ID
+    @workoutsApp.route('/getWorkout/<id>', methods=['GET'])
+    def getWorkout(id):
+        try:
+            doc = db.collection('workouts').document(id).get()
+            if not doc.exists:
+                return jsonify({
+                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
+                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
+                    "details": f"Workout {id} not found"
+                }), 404
+            workout = doc.to_dict()
+            workout["id"] = id
+            return jsonify(workout), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not retrieve workout {id}: {e}"
+            }), 500
+        
+    # get all workouts
+    @workoutsApp.route('/getAllWorkouts', methods=['GET'])
+    def getAllWorkouts():
+        try:
+            workouts = []
+            docs = db.collection('workouts').stream()
+            for doc in docs:
+                workout = doc.to_dict()
+                workout["id"] = doc.id
+                workouts.append(workout)
+            return jsonify(workouts), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not retrieve workouts: {e}"
+            }), 500
+        
+    # create workouts
+    @workoutsApp.route('/createWorkout', methods=['POST'])
+    def createWorkout(): # fields: description, default, exercises, muscle_group, name, number_of_exercises, sets, type
+        try:
+            data = request.get_json() or {}
+            workout_ref = db.collection("workouts").document()
+            workout_data = {
+                "description": data.get("description", ""),
+                "default": data.get("default", False), # dont allow user input
+                "exercises": data.get("exercises", []),
+                "equipment": data.get("equipment", []),
+                "muscle_group": data.get("muscle_group", ""),
+                "name": data.get("name", ""),
+                "number_of_exercises": data.get("number_of_exercises", 0),
+                "sets": data.get("sets", 0),
+                "type": data.get("type", ""),
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "updatedAt": firestore.SERVER_TIMESTAMP
+            }
+            workout_ref.set(workout_data)
+            return jsonify({
+                "message": "Workout created",
+                "id": workout_ref.id
+            }), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not create workout: {e}"
+            }), 500
 
     return workoutsApp
