@@ -111,13 +111,15 @@ def create_workouts_app():
                 date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
-                    "date": date_value,
-                    "startTime": data.get("startTime"),
-                    "endTime": data.get("endTime"),
-                    "notes": data.get("notes", ""),
-                    "timezone": data.get("timezone"),
+                    "date": date_value, # get from user device, not an input
+                    "startTime": data.get("startTime"), # get from user device, not an input
+                    "endTime": data.get("endTime"), # get from user device, not an input
+                    "notes": data.get("notes", ""), # optional user input
+                    "timezone": data.get("timezone"), # get from user device, not an input
                     "createdAt": firestore.SERVER_TIMESTAMP,
-                    "updatedAt": firestore.SERVER_TIMESTAMP
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                    # now the actual inputs
+                    "workout_id": data.get("workout_id") # the workout from the workouts collection in the db
                 }
                 workout_ref.set(workout_data)
                 return jsonify({
@@ -512,7 +514,7 @@ def create_workouts_app():
                 "default": data.get("default", False), # dont allow user input
                 "exercises": data.get("exercises", []),
                 "equipment": data.get("equipment", []),
-                "muscle_group": data.get("muscle_group", ""),
+                "muscle_group": data.get("muscle_group", []),
                 "name": data.get("name", ""),
                 "number_of_exercises": data.get("number_of_exercises", 0),
                 "sets": data.get("sets", 0),
