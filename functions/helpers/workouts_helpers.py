@@ -21,6 +21,15 @@ def compute_rpe(rir_value, rpe_value):
         return None
 
 
+def compute_volume(reps_value, weight_value):
+    if reps_value is None or weight_value is None:
+        return None
+    try:
+        return float(reps_value) * float(weight_value)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_workout_ref(user_id, workout_id):
     workout_ref = db.collection("users").document(user_id).collection("workouts").document(workout_id)
     workout_doc = workout_ref.get()
@@ -54,6 +63,8 @@ def attach_sets(item_ref, include_sets):
 
 def update_pr_if_needed(user_id, exercise_id, set_payload, workout_id, workout_exercise_id, set_id):
     try:
+        if not exercise_id:
+            return
         prs_ref = db.collection("users").document(user_id).collection("prs").document(exercise_id)
         existing = prs_ref.get()
         existing_data = existing.to_dict() if existing.exists else {}
