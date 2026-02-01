@@ -6,6 +6,7 @@ from datetime import datetime
 from helpers.workouts_helpers import (
     parse_bool,
     compute_rpe,
+    compute_volume,
     get_workout_ref,
     get_item_ref,
     attach_sets,
@@ -111,13 +112,13 @@ def create_workouts_app():
                 date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
-                    "date": date_value,
-                    "startTime": data.get("startTime"),
-                    "endTime": data.get("endTime"),
-                    "notes": data.get("notes", ""),
-                    "timezone": data.get("timezone"),
+                    "date": date_value, # get from user device, not an input
+                    "notes": data.get("notes", ""), # optional user input
+                    "timezone": data.get("timezone"), # get from user device, not an input
                     "createdAt": firestore.SERVER_TIMESTAMP,
-                    "updatedAt": firestore.SERVER_TIMESTAMP
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                    # now the actual inputs
+                    "workout_id": data.get("workout_id") # the workout from the workouts collection in the db
                 }
                 workout_ref.set(workout_data)
                 return jsonify({
@@ -152,6 +153,106 @@ def create_workouts_app():
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
                 "details": f"Could not process workouts for user {user_id}: {e}"
+            }), 500
+
+    @workoutsApp.route('/users/<user_id>/workouts/start', methods=['POST'])
+    def start_workout(user_id):
+        try:
+            data = request.get_json() or {}
+            template_id = data.get("workout_id")
+            if not template_id:
+                return jsonify({
+                    "error": ERROR_CODES["INVALID_REQUEST"]["message"],
+                    "code": ERROR_CODES["INVALID_REQUEST"]["code"],
+                    "details": "workout_id is required"
+                }), 400
+
+            template_ref = db.collection("workouts").document(template_id)
+            template_doc = template_ref.get()
+            if not template_doc.exists:
+                return jsonify({
+                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
+                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
+                    "details": f"Workout {template_id} not found"
+                }), 404
+
+            date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+            workout_ref = db.collection("users").document(user_id).collection("workouts").document()
+            workout_data = {
+                "date": date_value,
+                "notes": data.get("notes", ""),
+                "timezone": data.get("timezone"),
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+                "workout_id": template_id
+            }
+
+            template_data = template_doc.to_dict() or {}
+            exercises = template_data.get("exercises") or []
+            if not isinstance(exercises, list):
+                exercises = []
+
+            batch = db.batch()
+            batch.set(workout_ref, workout_data)
+
+            for index, exercise in enumerate(exercises):
+                exercise_id = None
+                name = None
+                notes = ""
+                order = index
+
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                    notes = exercise.get("notes", "")
+                    order_value = exercise.get("order")
+                    if order_value is not None:
+                        try:
+                            order = int(order_value)
+                        except (TypeError, ValueError):
+                            order = index
+                else:
+                    if exercise is not None:
+                        name = str(exercise)
+
+                if exercise_id is not None and not isinstance(exercise_id, str):
+                    exercise_id = str(exercise_id)
+                if name is not None and not isinstance(name, str):
+                    name = str(name)
+
+                if not name and exercise_id:
+                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
+                    if exercise_doc.exists:
+                        name = exercise_doc.to_dict().get("name")
+
+                if not name and not exercise_id:
+                    continue
+
+                item_ref = workout_ref.collection("items").document()
+                item_data = {
+                    "notes": notes,
+                    "order": order,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                    "updatedAt": firestore.SERVER_TIMESTAMP
+                }
+                if exercise_id:
+                    item_data["exerciseId"] = exercise_id
+                if name:
+                    item_data["name"] = name
+
+                batch.set(item_ref, item_data)
+
+            batch.commit()
+
+            return jsonify({
+                "message": "Workout started",
+                "id": workout_ref.id
+            }), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not start workout for user {user_id}: {e}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -367,6 +468,7 @@ def create_workouts_app():
                     "weight": data.get("weight", 0),
                     "rir": rir_value,
                     "rpe": compute_rpe(rir_value, rpe_value),
+                    "volume": compute_volume(data.get("reps"), data.get("weight", 0)),
                     "isPR": parse_bool(data.get("isPR"), False),
                     "notes": data.get("notes", ""),
                     "createdAt": firestore.SERVER_TIMESTAMP,
@@ -445,6 +547,12 @@ def create_workouts_app():
                 if "rpe" not in data and "rir" in data:
                     data["rpe"] = compute_rpe(data.get("rir"), None)
 
+                if "reps" in data or "weight" in data:
+                    current_data = set_doc.to_dict()
+                    reps_value = data.get("reps", current_data.get("reps"))
+                    weight_value = data.get("weight", current_data.get("weight"))
+                    data["volume"] = compute_volume(reps_value, weight_value)
+
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
                 set_ref.update(data)
                 item_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
@@ -460,6 +568,76 @@ def create_workouts_app():
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
                 "details": f"Could not process set {set_id} for workout exercise {item_id}: {e}"
+            }), 500
+        
+    # Firestore - getWorkout by ID
+    @workoutsApp.route('/getWorkout/<id>', methods=['GET'])
+    def getWorkout(id):
+        try:
+            doc = db.collection('workouts').document(id).get()
+            if not doc.exists:
+                return jsonify({
+                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
+                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
+                    "details": f"Workout {id} not found"
+                }), 404
+            workout = doc.to_dict()
+            workout["id"] = id
+            return jsonify(workout), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not retrieve workout {id}: {e}"
+            }), 500
+        
+    # get all workouts
+    @workoutsApp.route('/getAllWorkouts', methods=['GET'])
+    def getAllWorkouts():
+        try:
+            workouts = []
+            docs = db.collection('workouts').stream()
+            for doc in docs:
+                workout = doc.to_dict()
+                workout["id"] = doc.id
+                workouts.append(workout)
+            return jsonify(workouts), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not retrieve workouts: {e}"
+            }), 500
+        
+    # create workouts
+    @workoutsApp.route('/createWorkout', methods=['POST'])
+    def createWorkout(): # fields: description, default, exercises, muscle_group, name, number_of_exercises, sets, type
+        try:
+            data = request.get_json() or {}
+            workout_ref = db.collection("workouts").document()
+            workout_data = {
+                "description": data.get("description", ""),
+                "default": data.get("default", False), # dont allow user input
+                "exercises": data.get("exercises", []),
+                "equipment": data.get("equipment", []),
+                "muscle_group": data.get("muscle_group", []),
+                "name": data.get("name", ""),
+                "number_of_exercises": data.get("number_of_exercises", 0),
+                "sets": data.get("sets", 0),
+                "type": data.get("type", ""),
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "updatedAt": firestore.SERVER_TIMESTAMP
+            }
+            workout_ref.set(workout_data)
+            return jsonify({
+                "message": "Workout created",
+                "id": workout_ref.id
+            }), 200
+        except Exception as e:
+            return jsonify({
+                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
+                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
+                "details": f"Could not create workout: {e}"
             }), 500
 
     return workoutsApp
