@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
@@ -273,12 +274,18 @@ def create_workouts_app():
                 include_sets = parse_bool(request.args.get("includeSets"), True)
                 if include_items:
                     items_ref = workout_ref.collection("items")
-                    items = []
-                    for item_doc in items_ref.order_by("order").stream():
+                    item_docs = list(items_ref.order_by("order").stream())
+
+                    def process_item(item_doc):
                         item = item_doc.to_dict()
                         item["id"] = item_doc.id
                         item["sets"] = attach_sets(item_doc.reference, include_sets)
-                        items.append(item)
+                        return item
+
+                    # BOLT: Optimize N+1 query problem by fetching sets in parallel
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        items = list(executor.map(process_item, item_docs))
+
                     workout["items"] = items
                 return jsonify(workout), 200
 
@@ -364,12 +371,19 @@ def create_workouts_app():
 
             include_sets = parse_bool(request.args.get("includeSets"), False)
             items_ref = workout_ref.collection("items").order_by("order")
-            items = []
-            for item_doc in items_ref.stream():
+
+            item_docs = list(items_ref.stream())
+
+            def process_item(item_doc):
                 item = item_doc.to_dict()
                 item["id"] = item_doc.id
                 item["sets"] = attach_sets(item_doc.reference, include_sets)
-                items.append(item)
+                return item
+
+            # BOLT: Optimize N+1 query problem by fetching sets in parallel
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                items = list(executor.map(process_item, item_docs))
+
             return jsonify(items), 200
         except Exception as e:
             return jsonify({
