@@ -4,25 +4,27 @@
 ```
 .
 ├── README.md
-├── api/
-├── firebase-debug 2.log
 ├── firebase.json
 ├── firestore.indexes.json
-└── functions/
-    ├── main.py
-    ├── requirements.txt
-    ├── config/
-    │   └── db.py
-    ├── handlers/
-    │   ├── users_handlers.py
-    │   └── workouts_handlers.py
-    ├── helpers/
-    │   └── workouts_helpers.py
-    ├── routes/
-    │   ├── error_codes.py
-    │   ├── users.py
-    │   └── workouts.py
-    └── venv/
+├── functions/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── config/
+│   │   └── db.py
+│   ├── handlers/
+│   │   ├── users_handlers.py
+│   │   └── workouts_handlers.py
+│   ├── helpers/
+│   │   └── workouts_helpers.py
+│   └── routes/
+│       ├── error_codes.py
+│       ├── users.py
+│       └── workouts.py
+└── tests/
+    ├── test_security.py
+    ├── test_users_routes.py
+    ├── test_workouts_routes.py
+    └── utils.py
 ```
 
 # keep this section
