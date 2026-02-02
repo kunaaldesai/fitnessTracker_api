@@ -22,7 +22,7 @@ def create_workouts_app():
     def exercises(user_id):
         try:
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 name = str(data.get("name", "")).strip()
                 if not name:
                     return jsonify({
@@ -83,7 +83,7 @@ def create_workouts_app():
                 return jsonify(exercise), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -108,7 +108,7 @@ def create_workouts_app():
     def workouts(user_id):
         try:
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
@@ -158,7 +158,7 @@ def create_workouts_app():
     @workoutsApp.route('/users/<user_id>/workouts/start', methods=['POST'])
     def start_workout(user_id):
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             template_id = data.get("workout_id")
             if not template_id:
                 return jsonify({
@@ -283,7 +283,7 @@ def create_workouts_app():
                 return jsonify(workout), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -330,7 +330,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 exercise_id = data.get("exerciseId")
                 if not exercise_id:
                     return jsonify({
@@ -403,7 +403,7 @@ def create_workouts_app():
                 return jsonify(item), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -453,7 +453,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if data.get("reps") is None:
                     return jsonify({
                         "error": ERROR_CODES["INVALID_REQUEST"]["message"],
@@ -536,7 +536,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -613,7 +613,7 @@ def create_workouts_app():
     @workoutsApp.route('/createWorkout', methods=['POST'])
     def createWorkout(): # fields: description, default, exercises, muscle_group, name, number_of_exercises, sets, type
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             workout_ref = db.collection("workouts").document()
             workout_data = {
                 "description": data.get("description", ""),

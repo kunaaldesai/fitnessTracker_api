@@ -54,7 +54,7 @@ def create_users_app():
     @usersApp.route('/checkUserByPhone', methods=['POST'])
     def checkUserByPhone():
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             phone = (data.get("phoneNumber") or data.get("phone") or "").strip()
             if not phone:
                 return jsonify({
@@ -80,7 +80,7 @@ def create_users_app():
     @usersApp.route('/createUser', methods=['POST'])
     def createUser():
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True)
             if not data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -148,7 +148,7 @@ def create_users_app():
     @usersApp.route('/updateUser/<id>', methods=['PUT'])
     def updateUser(id):
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True)
             if not data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
