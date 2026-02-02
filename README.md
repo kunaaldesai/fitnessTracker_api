@@ -21,6 +21,7 @@
 │       ├── users.py
 │       └── workouts.py
 └── tests/
+    ├── test_security.py
     ├── test_users_routes.py
     ├── test_workouts_routes.py
     └── utils.py
