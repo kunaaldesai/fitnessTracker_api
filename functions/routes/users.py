@@ -5,6 +5,7 @@ from firebase_admin import firestore
 from datetime import datetime, timedelta
 import pytz
 import json
+import logging
 
 
 def create_users_app():
@@ -26,10 +27,11 @@ def create_users_app():
             user["id"] = id
             return jsonify(user), 200
         except Exception as e:
+            logging.error(f"Could not retrieve user {id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not retrieve user {id}: {e}"
+                "details": f"Could not retrieve user {id}"
             }), 500
 
     # Firestore - getUsers
@@ -45,16 +47,17 @@ def create_users_app():
                 docData.append(user)
             return jsonify(docData), 200
         except Exception as e:
+            logging.error(f"Could not retrieve users: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not retrieve users: {e}"
+                "details": "Could not retrieve users"
             }), 500
 
     @usersApp.route('/checkUserByPhone', methods=['POST'])
     def checkUserByPhone():
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             phone = (data.get("phoneNumber") or data.get("phone") or "").strip()
             if not phone:
                 return jsonify({
@@ -70,17 +73,18 @@ def create_users_app():
                 "exists": user_exists
             }), 200
         except Exception as e:
+            logging.error(f"Could not check phone number: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not check phone number: {e}"
+                "details": "Could not check phone number"
             }), 500
 
     # Firestore - createUser
     @usersApp.route('/createUser', methods=['POST'])
     def createUser():
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True)
             if not data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -117,10 +121,11 @@ def create_users_app():
                 "uid": uid
             }), 200
         except Exception as e:
+            logging.error(f"Could not create user: {e}")
             return jsonify({
                 "error": ERROR_CODES["USER_CREATION_FAILED"]["message"],
                 "code": ERROR_CODES["USER_CREATION_FAILED"]["code"],
-                "details": f"Could not create user: {e}"
+                "details": "Could not create user"
             }), 500
 
     # Firestore - deleteUser by ID
@@ -138,17 +143,18 @@ def create_users_app():
                     "details": f"User {id} not found"
                 }), 404
         except Exception as e:
+            logging.error(f"Could not delete user {id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["USER_DELETE_FAILED"]["message"],
                 "code": ERROR_CODES["USER_DELETE_FAILED"]["code"],
-                "details": f"Could not delete user {id}: {e}"
+                "details": f"Could not delete user {id}"
             }), 500
 
     # Firestore - updateUser by ID
     @usersApp.route('/updateUser/<id>', methods=['PUT'])
     def updateUser(id):
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True)
             if not data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -178,10 +184,11 @@ def create_users_app():
                     "details": f"User {id} not found"
                 }), 404
         except Exception as e:
+            logging.error(f"Could not update user {id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["USER_UPDATE_FAILED"]["message"],
                 "code": ERROR_CODES["USER_UPDATE_FAILED"]["code"],
-                "details": f"Could not update user {id}: {e}"
+                "details": f"Could not update user {id}"
             }), 500
         
     # Firestore - getUser by ID
@@ -202,10 +209,11 @@ def create_users_app():
                 viewer_id = getattr(g, "user", {}).get("uid") if hasattr(g, "user") else None
             return jsonify(user), 200
         except Exception as e:
+            logging.error(f"Could not retrieve user {id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not retrieve user {id}: {e}"
+                "details": f"Could not retrieve user {id}"
             }), 500
         
     return usersApp
