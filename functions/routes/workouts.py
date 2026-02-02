@@ -3,6 +3,7 @@ from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
 from datetime import datetime
+import logging
 from helpers.workouts_helpers import (
     parse_bool,
     compute_rpe,
@@ -22,7 +23,7 @@ def create_workouts_app():
     def exercises(user_id):
         try:
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 name = str(data.get("name", "")).strip()
                 if not name:
                     return jsonify({
@@ -59,10 +60,11 @@ def create_workouts_app():
                 exercises.append(exercise)
             return jsonify(exercises), 200
         except Exception as e:
+            logging.error(f"Could not handle exercises for user {user_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not handle exercises for user {user_id}: {e}"
+                "details": f"Could not handle exercises for user {user_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/exercises/<exercise_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -83,7 +85,7 @@ def create_workouts_app():
                 return jsonify(exercise), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -97,10 +99,11 @@ def create_workouts_app():
             exercise_ref.delete()
             return jsonify({"message": f"Exercise {exercise_id} deleted"}), 200
         except Exception as e:
+            logging.error(f"Could not process exercise {exercise_id} for user {user_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process exercise {exercise_id} for user {user_id}: {e}"
+                "details": f"Could not process exercise {exercise_id} for user {user_id}"
             }), 500
 
     # Workouts
@@ -108,7 +111,7 @@ def create_workouts_app():
     def workouts(user_id):
         try:
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
@@ -149,16 +152,17 @@ def create_workouts_app():
                 workouts_list.append(workout)
             return jsonify(workouts_list), 200
         except Exception as e:
+            logging.error(f"Could not process workouts for user {user_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workouts for user {user_id}: {e}"
+                "details": f"Could not process workouts for user {user_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/start', methods=['POST'])
     def start_workout(user_id):
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             template_id = data.get("workout_id")
             if not template_id:
                 return jsonify({
@@ -249,10 +253,11 @@ def create_workouts_app():
                 "id": workout_ref.id
             }), 200
         except Exception as e:
+            logging.error(f"Could not start workout for user {user_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not start workout for user {user_id}: {e}"
+                "details": f"Could not start workout for user {user_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -283,7 +288,7 @@ def create_workouts_app():
                 return jsonify(workout), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -303,18 +308,20 @@ def create_workouts_app():
                     item_doc.reference.delete()
                 workout_ref.delete()
             except Exception as deletion_error:
+                logging.error(f"Could not delete workout {workout_id}: {deletion_error}")
                 return jsonify({
                     "error": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["message"],
                     "code": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["code"],
-                    "details": f"Could not delete workout {workout_id}: {deletion_error}"
+                    "details": f"Could not delete workout {workout_id}"
                 }), 500
 
             return jsonify({"message": f"Workout {workout_id} deleted"}), 200
         except Exception as e:
+            logging.error(f"Could not process workout {workout_id} for user {user_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workout {workout_id} for user {user_id}: {e}"
+                "details": f"Could not process workout {workout_id} for user {user_id}"
             }), 500
 
     # Workout exercises
@@ -330,7 +337,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 exercise_id = data.get("exerciseId")
                 if not exercise_id:
                     return jsonify({
@@ -372,10 +379,11 @@ def create_workouts_app():
                 items.append(item)
             return jsonify(items), 200
         except Exception as e:
+            logging.error(f"Could not process workout exercises for workout {workout_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workout exercises for workout {workout_id}: {e}"
+                "details": f"Could not process workout exercises for workout {workout_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -403,7 +411,7 @@ def create_workouts_app():
                 return jsonify(item), 200
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -420,18 +428,20 @@ def create_workouts_app():
                     set_doc.reference.delete()
                 item_ref.delete()
             except Exception as deletion_error:
+                logging.error(f"Could not delete workout exercise {item_id}: {deletion_error}")
                 return jsonify({
                     "error": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["message"],
                     "code": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["code"],
-                    "details": f"Could not delete workout exercise {item_id}: {deletion_error}"
+                    "details": f"Could not delete workout exercise {item_id}"
                 }), 500
 
             return jsonify({"message": f"Workout exercise {item_id} deleted"}), 200
         except Exception as e:
+            logging.error(f"Could not process workout exercise {item_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workout exercise {item_id}: {e}"
+                "details": f"Could not process workout exercise {item_id}"
             }), 500
 
     # Sets
@@ -453,7 +463,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'POST':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if data.get("reps") is None:
                     return jsonify({
                         "error": ERROR_CODES["INVALID_REQUEST"]["message"],
@@ -481,10 +491,11 @@ def create_workouts_app():
                 try:
                     update_pr_if_needed(user_id, item_doc.to_dict().get("exerciseId"), set_payload, workout_id, item_id, set_ref.id)
                 except Exception as pr_error:
+                    logging.error(f"Set saved but PR update failed: {pr_error}")
                     return jsonify({
                         "error": ERROR_CODES["PR_UPDATE_FAILED"]["message"],
                         "code": ERROR_CODES["PR_UPDATE_FAILED"]["code"],
-                        "details": f"Set saved but PR update failed: {pr_error}"
+                        "details": "Set saved but PR update failed"
                     }), 500
 
                 item_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
@@ -503,10 +514,11 @@ def create_workouts_app():
                 sets.append(set_data)
             return jsonify(sets), 200
         except Exception as e:
+            logging.error(f"Could not process sets for workout exercise {item_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process sets for workout exercise {item_id}: {e}"
+                "details": f"Could not process sets for workout exercise {item_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>/sets/<set_id>', methods=['PUT', 'DELETE'])
@@ -536,7 +548,7 @@ def create_workouts_app():
                 }), 404
 
             if request.method == 'PUT':
-                data = request.get_json() or {}
+                data = request.get_json(silent=True) or {}
                 if not data:
                     return jsonify({
                         "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
@@ -564,10 +576,11 @@ def create_workouts_app():
             workout_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
             return jsonify({"message": f"Set {set_id} deleted"}), 200
         except Exception as e:
+            logging.error(f"Could not process set {set_id} for workout exercise {item_id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process set {set_id} for workout exercise {item_id}: {e}"
+                "details": f"Could not process set {set_id} for workout exercise {item_id}"
             }), 500
         
     # Firestore - getWorkout by ID
@@ -585,10 +598,11 @@ def create_workouts_app():
             workout["id"] = id
             return jsonify(workout), 200
         except Exception as e:
+            logging.error(f"Could not retrieve workout {id}: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not retrieve workout {id}: {e}"
+                "details": f"Could not retrieve workout {id}"
             }), 500
         
     # get all workouts
@@ -603,17 +617,18 @@ def create_workouts_app():
                 workouts.append(workout)
             return jsonify(workouts), 200
         except Exception as e:
+            logging.error(f"Could not retrieve workouts: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not retrieve workouts: {e}"
+                "details": "Could not retrieve workouts"
             }), 500
         
     # create workouts
     @workoutsApp.route('/createWorkout', methods=['POST'])
     def createWorkout(): # fields: description, default, exercises, muscle_group, name, number_of_exercises, sets, type
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             workout_ref = db.collection("workouts").document()
             workout_data = {
                 "description": data.get("description", ""),
@@ -634,10 +649,11 @@ def create_workouts_app():
                 "id": workout_ref.id
             }), 200
         except Exception as e:
+            logging.error(f"Could not create workout: {e}")
             return jsonify({
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not create workout: {e}"
+                "details": "Could not create workout"
             }), 500
 
     return workoutsApp
