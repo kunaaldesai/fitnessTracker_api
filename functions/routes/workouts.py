@@ -7,12 +7,8 @@ from datetime import datetime
 import logging
 from helpers.workouts_helpers import (
     parse_bool,
-    compute_rpe,
-    compute_volume,
     get_workout_ref,
-    get_item_ref,
-    attach_sets,
-    update_pr_if_needed,
+    process_workout_exercises,
 )
 
 
@@ -115,6 +111,13 @@ def create_workouts_app():
                 data = request.get_json(silent=True) or {}
                 date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
+
+                # Check for nested exercises
+                exercises_data = data.get("exercises", [])
+
+                # Process exercises using helper
+                processed_exercises = process_workout_exercises(user_id, workout_ref.id, exercises_data)
+
                 workout_data = {
                     "date": date_value, # get from user device, not an input
                     "notes": data.get("notes", ""), # optional user input
@@ -122,11 +125,12 @@ def create_workouts_app():
                     "createdAt": firestore.SERVER_TIMESTAMP,
                     "updatedAt": firestore.SERVER_TIMESTAMP,
                     # now the actual inputs
-                    "workout_id": data.get("workout_id") # the workout from the workouts collection in the db
+                    "workout_id": data.get("workout_id"), # the workout from the workouts collection in the db
+                    "exercises": processed_exercises
                 }
                 workout_ref.set(workout_data)
                 return jsonify({
-                    "message": "Workout created",
+                    "message": "Workout saved",
                     "id": workout_ref.id
                 }), 200
 
@@ -275,23 +279,6 @@ def create_workouts_app():
             if request.method == 'GET':
                 workout = workout_doc.to_dict()
                 workout["id"] = workout_doc.id
-                include_items = parse_bool(request.args.get("includeItems"), False)
-                include_sets = parse_bool(request.args.get("includeSets"), True)
-                if include_items:
-                    items_ref = workout_ref.collection("items")
-                    item_docs = list(items_ref.order_by("order").stream())
-
-                    def process_item(item_doc):
-                        item = item_doc.to_dict()
-                        item["id"] = item_doc.id
-                        item["sets"] = attach_sets(item_doc.reference, include_sets)
-                        return item
-
-                    # BOLT: Optimize N+1 query problem by fetching sets in parallel
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        items = list(executor.map(process_item, item_docs))
-
-                    workout["items"] = items
                 return jsonify(workout), 200
 
             if request.method == 'PUT':
@@ -302,17 +289,17 @@ def create_workouts_app():
                         "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                         "details": "No update data provided."
                     }), 400
+
+                if "exercises" in data:
+                    exercises_data = data["exercises"]
+                    processed_exercises = process_workout_exercises(user_id, workout_id, exercises_data)
+                    data["exercises"] = processed_exercises
+
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
                 workout_ref.update(data)
                 return jsonify({"message": f"Workout {workout_id} updated"}), 200
 
             try:
-                items_ref = workout_ref.collection("items")
-                for item_doc in items_ref.stream():
-                    sets_ref = item_doc.reference.collection("sets")
-                    for set_doc in sets_ref.stream():
-                        set_doc.reference.delete()
-                    item_doc.reference.delete()
                 workout_ref.delete()
             except Exception as deletion_error:
                 logging.error(f"Could not delete workout {workout_id}: {deletion_error}")
@@ -331,271 +318,6 @@ def create_workouts_app():
                 "details": f"Could not process workout {workout_id} for user {user_id}"
             }), 500
 
-    # Workout exercises
-    @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items', methods=['POST', 'GET'])
-    def workout_items(user_id, workout_id):
-        try:
-            workout_ref, workout_doc = get_workout_ref(user_id, workout_id)
-            if workout_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
-                    "details": f"Workout {workout_id} not found for user {user_id}"
-                }), 404
-
-            if request.method == 'POST':
-                data = request.get_json(silent=True) or {}
-                exercise_id = data.get("exerciseId")
-                if not exercise_id:
-                    return jsonify({
-                        "error": ERROR_CODES["INVALID_REQUEST"]["message"],
-                        "code": ERROR_CODES["INVALID_REQUEST"]["code"],
-                        "details": "exerciseId is required"
-                    }), 400
-
-                exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                if not exercise_doc.exists:
-                    return jsonify({
-                        "error": ERROR_CODES["EXERCISE_NOT_FOUND"]["message"],
-                        "code": ERROR_CODES["EXERCISE_NOT_FOUND"]["code"],
-                        "details": f"Exercise {exercise_id} not found for user {user_id}"
-                    }), 404
-
-                item_ref = workout_ref.collection("items").document()
-                item_data = {
-                    "exerciseId": exercise_id,
-                    "name": data.get("name") or exercise_doc.to_dict().get("name"),
-                    "notes": data.get("notes", ""),
-                    "order": data.get("order", 0),
-                    "createdAt": firestore.SERVER_TIMESTAMP,
-                    "updatedAt": firestore.SERVER_TIMESTAMP
-                }
-                item_ref.set(item_data)
-                return jsonify({
-                    "message": "Workout exercise added",
-                    "id": item_ref.id
-                }), 200
-
-            include_sets = parse_bool(request.args.get("includeSets"), False)
-            items_ref = workout_ref.collection("items").order_by("order")
-
-            item_docs = list(items_ref.stream())
-
-            def process_item(item_doc):
-                item = item_doc.to_dict()
-                item["id"] = item_doc.id
-                item["sets"] = attach_sets(item_doc.reference, include_sets)
-                return item
-
-            # BOLT: Optimize N+1 query problem by fetching sets in parallel
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                items = list(executor.map(process_item, item_docs))
-
-            return jsonify(items), 200
-        except Exception as e:
-            logging.error(f"Could not process workout exercises for workout {workout_id}: {e}")
-            return jsonify({
-                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
-                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workout exercises for workout {workout_id}"
-            }), 500
-
-    @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>', methods=['GET', 'PUT', 'DELETE'])
-    def workout_item_detail(user_id, workout_id, item_id):
-        try:
-            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
-            if workout_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
-                    "details": f"Workout {workout_id} not found for user {user_id}"
-                }), 404
-            if item_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["code"],
-                    "details": f"Workout exercise {item_id} not found in workout {workout_id}"
-                }), 404
-
-            if request.method == 'GET':
-                include_sets = parse_bool(request.args.get("includeSets"), True)
-                item = item_doc.to_dict()
-                item["id"] = item_doc.id
-                item["sets"] = attach_sets(item_ref, include_sets)
-                return jsonify(item), 200
-
-            if request.method == 'PUT':
-                data = request.get_json(silent=True) or {}
-                if not data:
-                    return jsonify({
-                        "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
-                        "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
-                        "details": "No update data provided."
-                    }), 400
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
-                item_ref.update(data)
-                return jsonify({"message": f"Workout exercise {item_id} updated"}), 200
-
-            try:
-                sets_ref = item_ref.collection("sets")
-                for set_doc in sets_ref.stream():
-                    set_doc.reference.delete()
-                item_ref.delete()
-            except Exception as deletion_error:
-                logging.error(f"Could not delete workout exercise {item_id}: {deletion_error}")
-                return jsonify({
-                    "error": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["message"],
-                    "code": ERROR_CODES["FIRESTORE_DELETE_FAILED"]["code"],
-                    "details": f"Could not delete workout exercise {item_id}"
-                }), 500
-
-            return jsonify({"message": f"Workout exercise {item_id} deleted"}), 200
-        except Exception as e:
-            logging.error(f"Could not process workout exercise {item_id}: {e}")
-            return jsonify({
-                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
-                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process workout exercise {item_id}"
-            }), 500
-
-    # Sets
-    @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>/sets', methods=['POST', 'GET'])
-    def workout_sets(user_id, workout_id, item_id):
-        try:
-            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
-            if workout_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
-                    "details": f"Workout {workout_id} not found for user {user_id}"
-                }), 404
-            if item_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["code"],
-                    "details": f"Workout exercise {item_id} not found in workout {workout_id}"
-                }), 404
-
-            if request.method == 'POST':
-                data = request.get_json(silent=True) or {}
-                if data.get("reps") is None:
-                    return jsonify({
-                        "error": ERROR_CODES["INVALID_REQUEST"]["message"],
-                        "code": ERROR_CODES["INVALID_REQUEST"]["code"],
-                        "details": "reps is required"
-                    }), 400
-
-                rir_value = data.get("rir")
-                rpe_value = data.get("rpe")
-                set_payload = {
-                    "reps": data.get("reps"),
-                    "weight": data.get("weight", 0),
-                    "rir": rir_value,
-                    "rpe": compute_rpe(rir_value, rpe_value),
-                    "volume": compute_volume(data.get("reps"), data.get("weight", 0)),
-                    "isPR": parse_bool(data.get("isPR"), False),
-                    "notes": data.get("notes", ""),
-                    "createdAt": firestore.SERVER_TIMESTAMP,
-                    "updatedAt": firestore.SERVER_TIMESTAMP
-                }
-
-                set_ref = item_ref.collection("sets").document()
-                set_ref.set(set_payload)
-
-                try:
-                    update_pr_if_needed(user_id, item_doc.to_dict().get("exerciseId"), set_payload, workout_id, item_id, set_ref.id)
-                except Exception as pr_error:
-                    logging.error(f"Set saved but PR update failed: {pr_error}")
-                    return jsonify({
-                        "error": ERROR_CODES["PR_UPDATE_FAILED"]["message"],
-                        "code": ERROR_CODES["PR_UPDATE_FAILED"]["code"],
-                        "details": "Set saved but PR update failed"
-                    }), 500
-
-                item_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-                workout_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-
-                return jsonify({
-                    "message": "Set added",
-                    "id": set_ref.id
-                }), 200
-
-            sets_ref = item_ref.collection("sets").order_by("createdAt")
-            sets = []
-            for set_doc in sets_ref.stream():
-                set_data = set_doc.to_dict()
-                set_data["id"] = set_doc.id
-                sets.append(set_data)
-            return jsonify(sets), 200
-        except Exception as e:
-            logging.error(f"Could not process sets for workout exercise {item_id}: {e}")
-            return jsonify({
-                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
-                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process sets for workout exercise {item_id}"
-            }), 500
-
-    @workoutsApp.route('/users/<user_id>/workouts/<workout_id>/items/<item_id>/sets/<set_id>', methods=['PUT', 'DELETE'])
-    def workout_set_detail(user_id, workout_id, item_id, set_id):
-        try:
-            workout_ref, item_ref, item_doc = get_item_ref(user_id, workout_id, item_id)
-            if workout_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
-                    "details": f"Workout {workout_id} not found for user {user_id}"
-                }), 404
-            if item_ref is None:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_ITEM_NOT_FOUND"]["code"],
-                    "details": f"Workout exercise {item_id} not found in workout {workout_id}"
-                }), 404
-
-            set_ref = item_ref.collection("sets").document(set_id)
-            set_doc = set_ref.get()
-            if not set_doc.exists:
-                return jsonify({
-                    "error": ERROR_CODES["SET_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["SET_NOT_FOUND"]["code"],
-                    "details": f"Set {set_id} not found in workout exercise {item_id}"
-                }), 404
-
-            if request.method == 'PUT':
-                data = request.get_json(silent=True) or {}
-                if not data:
-                    return jsonify({
-                        "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
-                        "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
-                        "details": "No update data provided."
-                    }), 400
-
-                if "rpe" not in data and "rir" in data:
-                    data["rpe"] = compute_rpe(data.get("rir"), None)
-
-                if "reps" in data or "weight" in data:
-                    current_data = set_doc.to_dict()
-                    reps_value = data.get("reps", current_data.get("reps"))
-                    weight_value = data.get("weight", current_data.get("weight"))
-                    data["volume"] = compute_volume(reps_value, weight_value)
-
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
-                set_ref.update(data)
-                item_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-                workout_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-                return jsonify({"message": f"Set {set_id} updated"}), 200
-
-            set_ref.delete()
-            item_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-            workout_ref.update({"updatedAt": firestore.SERVER_TIMESTAMP})
-            return jsonify({"message": f"Set {set_id} deleted"}), 200
-        except Exception as e:
-            logging.error(f"Could not process set {set_id} for workout exercise {item_id}: {e}")
-            return jsonify({
-                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
-                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not process set {set_id} for workout exercise {item_id}"
-            }), 500
         
     # Firestore - getWorkout by ID
     @workoutsApp.route('/getWorkout/<id>', methods=['GET'])

@@ -1,5 +1,6 @@
 from config.db import db
 from firebase_admin import firestore
+import logging
 
 
 def parse_bool(value, default=False):
@@ -36,29 +37,6 @@ def get_workout_ref(user_id, workout_id):
     if not workout_doc.exists:
         return None, None
     return workout_ref, workout_doc
-
-
-def get_item_ref(user_id, workout_id, item_id):
-    workout_ref, workout_doc = get_workout_ref(user_id, workout_id)
-    if workout_ref is None:
-        return None, None, None
-    item_ref = workout_ref.collection("items").document(item_id)
-    item_doc = item_ref.get()
-    if not item_doc.exists:
-        return workout_ref, None, None
-    return workout_ref, item_ref, item_doc
-
-
-def attach_sets(item_ref, include_sets):
-    if not include_sets:
-        return []
-    sets_ref = item_ref.collection("sets")
-    sets = []
-    for set_doc in sets_ref.order_by("createdAt").stream():
-        set_data = set_doc.to_dict()
-        set_data["id"] = set_doc.id
-        sets.append(set_data)
-    return sets
 
 
 def update_pr_if_needed(user_id, exercise_id, set_payload, workout_id, workout_exercise_id, set_id):
@@ -102,3 +80,70 @@ def update_pr_if_needed(user_id, exercise_id, set_payload, workout_id, workout_e
             prs_ref.set(pr_payload, merge=True)
     except Exception as pr_error:
         raise pr_error
+
+
+def process_workout_exercises(user_id, workout_id, exercises_data):
+    """
+    Iterates through exercises and sets, computes derived fields, and updates PRs.
+    Returns the processed exercises list.
+    """
+    processed_exercises = []
+
+    for exercise_index, exercise in enumerate(exercises_data):
+        # Ensure exercise is a dict
+        if not isinstance(exercise, dict):
+            continue
+
+        processed_exercise = exercise.copy()
+
+        # Get Exercise ID
+        exercise_id = processed_exercise.get("exerciseId") or processed_exercise.get("id")
+
+        # Process Sets
+        sets_data = processed_exercise.get("sets", [])
+        processed_sets = []
+
+        for set_index, set_item in enumerate(sets_data):
+            if not isinstance(set_item, dict):
+                continue
+
+            processed_set = set_item.copy()
+
+            # Generate IDs if missing (useful for referencing)
+            if not processed_set.get("id"):
+                processed_set["id"] = f"set_{exercise_index}_{set_index}"
+
+            # Compute RPE/Volume
+            rir_value = processed_set.get("rir")
+            rpe_value = processed_set.get("rpe")
+            reps_value = processed_set.get("reps")
+            weight_value = processed_set.get("weight")
+
+            processed_set["rpe"] = compute_rpe(rir_value, rpe_value)
+            processed_set["volume"] = compute_volume(reps_value, weight_value)
+
+            # Check PR
+            # We use the set ID we just ensured exists
+            set_id = processed_set["id"]
+            # We use the exercise index or ID for workout_exercise_id
+            workout_exercise_id = str(exercise_index)
+
+            try:
+                update_pr_if_needed(
+                    user_id=user_id,
+                    exercise_id=exercise_id,
+                    set_payload=processed_set,
+                    workout_id=workout_id,
+                    workout_exercise_id=workout_exercise_id,
+                    set_id=set_id
+                )
+            except Exception as e:
+                logging.error(f"Failed to update PR for user {user_id}, exercise {exercise_id}: {e}")
+                # We continue processing even if PR update fails
+
+            processed_sets.append(processed_set)
+
+        processed_exercise["sets"] = processed_sets
+        processed_exercises.append(processed_exercise)
+
+    return processed_exercises
