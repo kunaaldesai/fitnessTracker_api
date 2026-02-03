@@ -1,6 +1,7 @@
 from config.db import db
 from firebase_admin import firestore
 import logging
+import uuid
 
 
 def parse_bool(value, default=False):
@@ -98,6 +99,10 @@ def process_workout_exercises(user_id, workout_id, exercises_data):
 
         # Get Exercise ID
         exercise_id = processed_exercise.get("exerciseId") or processed_exercise.get("id")
+
+        # Ensure ID exists for the item
+        if "id" not in processed_exercise:
+            processed_exercise["id"] = str(uuid.uuid4())
 
         # Process Sets
         sets_data = processed_exercise.get("sets", [])
