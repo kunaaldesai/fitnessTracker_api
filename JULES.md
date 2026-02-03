@@ -1,6 +1,6 @@
 # JULES TO DO LIST
 ## INTRO
-Hello Jules. This is the file where you will be able to see the to do list for scheduled tasks. If there is nothing listed here, then do not do anything for this run. 
+Hello Jules. This is the file where you will be able to see the to do list for scheduled tasks. If there is nothing listed here, then do not do anything for this run. You will also see a bugs section. Fix the bugs if there are bugs listed there.
 
 
 ## TO DO 
@@ -13,4 +13,8 @@ Hello Jules. This is the file where you will be able to see the to do list for s
 - If a backend field changes, update the test fixtures and assertions first, then re-run the tests.
 - If the tests fail, fix them in the PR.
 ### Task 3 (Daily Task)
+- Nothing yet.
+
+## BUGS
+### Bug 1 (IMPORTANT)
 - Nothing yet.
