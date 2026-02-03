@@ -109,7 +109,8 @@ def create_users_app():
             #additional user data not asked during onboarding
             data["bio"] = data.get("bio", "")
             data["imageUrl"] = data.get("imageUrl", "")
-            data["isAdmin"] = data.get("isAdmin", False)
+            # Security: Prevent privilege escalation
+            data["isAdmin"] = False
             if data.get("gender") is None:
                 data["gender"] = "N/A"
 
@@ -163,6 +164,9 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
+                # Security: Prevent privilege escalation
+                data.pop("isAdmin", None)
+
                 # Add updatedAt timestamp
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
