@@ -22,7 +22,9 @@
 │       └── workouts.py
 └── tests/
     ├── test_security.py
+    ├── test_security_exploit.py
     ├── test_users_routes.py
+    ├── test_workouts_new_flow.py
     ├── test_workouts_routes.py
     └── utils.py
 ```
