@@ -16,6 +16,7 @@
 │   │   └── workouts_handlers.py
 │   ├── helpers/
 │   │   └── workouts_helpers.py
+│   ├── .gitignore
 │   └── routes/
 │       ├── error_codes.py
 │       ├── users.py
