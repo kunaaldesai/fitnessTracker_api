@@ -200,6 +200,11 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # BOLT: Optimization to reduce N+1 queries.
+            # Collect exercises that need a name lookup (have ID but no name)
+            normalized_exercises = []
+            exercise_ids_to_fetch = set()
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -226,17 +231,43 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    exercise_ids_to_fetch.add(exercise_id)
+
+                normalized_exercises.append({
+                    "exerciseId": exercise_id,
+                    "name": name,
+                    "notes": notes,
+                    "order": order
+                })
+
+            # Batch fetch missing names in parallel
+            fetched_names = {}
+            if exercise_ids_to_fetch:
+                ids_list = list(exercise_ids_to_fetch)
+                refs = [db.collection("users").document(user_id).collection("exercises").document(eid) for eid in ids_list]
+
+                # Use get_all to fetch in one round-trip
+                snapshots = db.get_all(refs)
+
+                for i, snap in enumerate(snapshots):
+                    if snap.exists:
+                        fetched_names[ids_list[i]] = snap.to_dict().get("name")
+
+            # Create items using fetched names
+            for item in normalized_exercises:
+                exercise_id = item["exerciseId"]
+                name = item["name"]
+
+                if not name and exercise_id:
+                    name = fetched_names.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
 
                 item_ref = workout_ref.collection("items").document()
                 item_data = {
-                    "notes": notes,
-                    "order": order,
+                    "notes": item["notes"],
+                    "order": item["order"],
                     "createdAt": firestore.SERVER_TIMESTAMP,
                     "updatedAt": firestore.SERVER_TIMESTAMP
                 }

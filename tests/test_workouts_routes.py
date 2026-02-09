@@ -201,6 +201,48 @@ class WorkoutsRoutesTestCase(unittest.TestCase):
         self.assertEqual(response.get_json()["id"], "workout1")
         batch.commit.assert_called_once()
 
+    def test_start_workout_optimization_n_plus_one_fix(self):
+        workouts_collection = MagicMock()
+        users_collection = MagicMock()
+
+        template_ref = MagicMock()
+        # Template has exercises WITHOUT names
+        template_doc = make_doc("template1", {"exercises": [{"exerciseId": "ex1"}, {"exerciseId": "ex2"}]})
+        template_ref.get.return_value = template_doc
+        workouts_collection.document.return_value = template_ref
+
+        user_doc = MagicMock()
+        user_workouts_collection = MagicMock()
+        workout_ref = MagicMock()
+        workout_ref.id = "workout1"
+        item_collection = MagicMock()
+        item_ref = MagicMock()
+
+        users_collection.document.return_value = user_doc
+        user_doc.collection.return_value = user_workouts_collection
+        user_workouts_collection.document.return_value = workout_ref
+        workout_ref.collection.return_value = item_collection
+        item_collection.document.return_value = item_ref
+
+        self.fake_db.collection.side_effect = lambda name: workouts_collection if name == "workouts" else users_collection
+        batch = MagicMock()
+        self.fake_db.batch.return_value = batch
+
+        # Setup get_all response
+        snap1 = make_doc("ex1", {"name": "Bench"})
+        snap2 = make_doc("ex2", {"name": "Squat"})
+        self.fake_db.get_all.return_value = [snap1, snap2]
+
+        response = self.client.post("/users/user1/workouts/start", json={"workout_id": "template1"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["id"], "workout1")
+
+        # Verify get_all was called once
+        self.fake_db.get_all.assert_called_once()
+        # Verify batch commit
+        batch.commit.assert_called_once()
+
     def test_workout_detail_get_with_items(self):
         workout_ref = MagicMock()
         workout_doc = make_doc("workout1", {"date": "2024-01-10"})
