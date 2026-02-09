@@ -15,6 +15,7 @@
 │   │   ├── users_handlers.py
 │   │   └── workouts_handlers.py
 │   ├── helpers/
+│   │   ├── security.py
 │   │   └── workouts_helpers.py
 │   └── routes/
 │       ├── error_codes.py

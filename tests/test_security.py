@@ -39,5 +39,23 @@ class SecurityLeakTestCase(unittest.TestCase):
         self.assertNotIn(secret_ip, data["details"])
         self.assertEqual(data["details"], "Could not retrieve user user1")
 
+    def test_security_headers_present(self):
+        # Mock a successful response
+        doc = MagicMock()
+        doc.exists = True
+        doc.to_dict.return_value = {"id": "user1", "firstName": "Test"}
+        self.fake_db.collection.return_value.document.return_value.get.return_value = doc
+
+        response = self.client.get("/getUser/user1")
+        self.assertEqual(response.status_code, 200)
+
+        # Check for security headers
+        headers = response.headers
+        self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(headers.get("X-Frame-Options"), "SAMEORIGIN")
+        self.assertIn("max-age=31536000", headers.get("Strict-Transport-Security", ""))
+        self.assertEqual(headers.get("Content-Security-Policy"), "default-src 'self'")
+        self.assertEqual(headers.get("Referrer-Policy"), "strict-origin-when-cross-origin")
+
 if __name__ == "__main__":
     unittest.main()

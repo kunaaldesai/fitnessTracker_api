@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, g
 from config.db import db
 from .error_codes import ERROR_CODES
+from helpers.security import attach_security_headers
 from firebase_admin import firestore
 from datetime import datetime, timedelta
 import pytz
@@ -11,6 +12,9 @@ import logging
 def create_users_app():
     # Initialize Flask app
     usersApp = Flask(__name__)
+
+    # Security headers
+    usersApp.after_request(attach_security_headers)
 
     # Firestore - getUser by ID
     @usersApp.route('/getUser/<id>', methods=['GET'])

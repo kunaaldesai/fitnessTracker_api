@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
+from helpers.security import attach_security_headers
 from firebase_admin import firestore
 from datetime import datetime
 import logging
@@ -18,6 +19,9 @@ from helpers.workouts_helpers import (
 
 def create_workouts_app():
     workoutsApp = Flask(__name__)
+
+    # Security headers
+    workoutsApp.after_request(attach_security_headers)
 
     # Exercises
     @workoutsApp.route('/users/<user_id>/exercises', methods=['POST', 'GET'])
