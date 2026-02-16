@@ -92,30 +92,36 @@ def create_users_app():
                     "details": "No data provided."
                 }), 400
             
+            # Allow-list for fields
+            ALLOWED_CREATE_FIELDS = {"id", "firstName", "lastName", "bio", "imageUrl", "gender", "phoneNumber", "email"}
+            filtered_data = {k: v for k, v in data.items() if k in ALLOWED_CREATE_FIELDS}
+
             # Add timestamps
-            data["createdAt"] = firestore.SERVER_TIMESTAMP
-            data["updatedAt"] = firestore.SERVER_TIMESTAMP
+            filtered_data["createdAt"] = firestore.SERVER_TIMESTAMP
+            filtered_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
             # sanitize firstName and lastName
-            first_name = data.get("firstName", "")
-            last_name = data.get("lastName", "")
+            first_name = filtered_data.get("firstName", "")
+            last_name = filtered_data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
-                data["firstName"] = first_name
+                filtered_data["firstName"] = first_name.capitalize()
             if last_name:
-                last_name.capitalize()
-                data["lastName"] = last_name
+                filtered_data["lastName"] = last_name.capitalize()
             
             #additional user data not asked during onboarding
-            data["bio"] = data.get("bio", "")
-            data["imageUrl"] = data.get("imageUrl", "")
-            # Security: Prevent privilege escalation
-            data["isAdmin"] = False
-            if data.get("gender") is None:
-                data["gender"] = "N/A"
+            if "bio" not in filtered_data:
+                filtered_data["bio"] = ""
+            if "imageUrl" not in filtered_data:
+                filtered_data["imageUrl"] = ""
 
-            uid = data["id"]
-            db.collection('users').document(uid).create(data)
+            # Security: Prevent privilege escalation (explicitly set)
+            filtered_data["isAdmin"] = False
+
+            if filtered_data.get("gender") is None:
+                filtered_data["gender"] = "N/A"
+
+            uid = filtered_data["id"]
+            db.collection('users').document(uid).create(filtered_data)
 
             return jsonify({
                 "message": "User created",
@@ -164,22 +170,25 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
+                # Allow-list for fields
+                ALLOWED_UPDATE_FIELDS = {"firstName", "lastName", "bio", "imageUrl", "gender"}
+                filtered_data = {k: v for k, v in data.items() if k in ALLOWED_UPDATE_FIELDS}
+
+                # Security: Prevent privilege escalation (removed implicitly by allow-list, but kept for clarity)
+                if "isAdmin" in data:
+                    logging.warning(f"User {id} attempted to update isAdmin field")
 
                 # Add updatedAt timestamp
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
+                filtered_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
-                first_name = data.get("firstName", "")
-                last_name = data.get("lastName", "")
+                first_name = filtered_data.get("firstName", "")
+                last_name = filtered_data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
-                    data["firstName"] = first_name
+                    filtered_data["firstName"] = first_name.capitalize()
                 if last_name:
-                    last_name.capitalize()
-                    data["lastName"] = last_name
+                    filtered_data["lastName"] = last_name.capitalize()
 
-                db.collection('users').document(id).update(data)
+                db.collection('users').document(id).update(filtered_data)
                 return jsonify({"message": f"User {id} updated"}), 200
             else:
                 return jsonify({
