@@ -200,6 +200,40 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # BOLT: Optimize N+1 query problem by batch fetching exercise names
+            missing_name_refs = []
+            exercise_id_to_name = {}
+
+            # First pass: identify exercises needing name resolution
+            for exercise in exercises:
+                ex_id = None
+                ex_name = None
+                if isinstance(exercise, dict):
+                    ex_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    ex_name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                else:
+                    if exercise is not None:
+                        ex_name = str(exercise)
+
+                if ex_id is not None and not isinstance(ex_id, str):
+                    ex_id = str(ex_id)
+
+                if not ex_name and ex_id:
+                    ref = db.collection("users").document(user_id).collection("exercises").document(ex_id)
+                    missing_name_refs.append(ref)
+
+            if missing_name_refs:
+                # Deduplicate refs based on ID to avoid fetching same doc twice
+                unique_refs_map = {ref.id: ref for ref in missing_name_refs}
+                if unique_refs_map:
+                    try:
+                        fetched_docs = db.get_all(list(unique_refs_map.values()))
+                        for doc in fetched_docs:
+                            if doc.exists:
+                                exercise_id_to_name[doc.id] = doc.to_dict().get("name")
+                    except Exception as batch_error:
+                        logging.warning(f"Batch fetch failed in start_workout: {batch_error}")
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -226,9 +260,15 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    name = exercise_id_to_name.get(exercise_id)
+                    # Fallback to individual fetch if batch failed or missed somehow (safety net)
+                    if not name:
+                        try:
+                            exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
+                            if exercise_doc.exists:
+                                name = exercise_doc.to_dict().get("name")
+                        except Exception as e:
+                            logging.warning(f"Individual fetch fallback failed for exercise {exercise_id}: {e}")
 
                 if not name and not exercise_id:
                     continue
