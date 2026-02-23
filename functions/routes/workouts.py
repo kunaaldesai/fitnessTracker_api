@@ -200,6 +200,10 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # BOLT: Optimize N+1 query problem by batch fetching exercise names
+            exercise_refs_to_fetch = []
+            exercises_to_process = []
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -225,18 +229,45 @@ def create_workouts_app():
                 if name is not None and not isinstance(name, str):
                     name = str(name)
 
+                # If we have an ID but no name, we need to fetch it
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    ref = db.collection("users").document(user_id).collection("exercises").document(exercise_id)
+                    exercise_refs_to_fetch.append(ref)
+
+                exercises_to_process.append({
+                    "exerciseId": exercise_id,
+                    "name": name,
+                    "notes": notes,
+                    "order": order,
+                    "needs_fetch": (not name and exercise_id is not None)
+                })
+
+            # Batch fetch missing names
+            fetched_names = {}
+            if exercise_refs_to_fetch:
+                try:
+                    docs = db.get_all(exercise_refs_to_fetch)
+                    for doc in docs:
+                        if doc.exists:
+                            fetched_names[doc.id] = doc.to_dict().get("name")
+                except Exception as fetch_error:
+                    logging.warning(f"Failed to batch fetch exercise names: {fetch_error}")
+
+            for item in exercises_to_process:
+                exercise_id = item["exerciseId"]
+                name = item["name"]
+
+                # If we needed to fetch and didn't have a name, try to look it up
+                if item["needs_fetch"] and not name:
+                    name = fetched_names.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
 
                 item_ref = workout_ref.collection("items").document()
                 item_data = {
-                    "notes": notes,
-                    "order": order,
+                    "notes": item["notes"],
+                    "order": item["order"],
                     "createdAt": firestore.SERVER_TIMESTAMP,
                     "updatedAt": firestore.SERVER_TIMESTAMP
                 }
