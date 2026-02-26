@@ -7,6 +7,19 @@ import pytz
 import json
 import logging
 
+ALLOWED_UPDATE_FIELDS = {
+    "firstName",
+    "lastName",
+    "phoneNumber",
+    "bio",
+    "imageUrl",
+    "gender",
+    "height",
+    "weight",
+    "dateOfBirth",
+    "email"
+}
+
 
 def create_users_app():
     # Initialize Flask app
@@ -115,7 +128,14 @@ def create_users_app():
                 data["gender"] = "N/A"
 
             uid = data["id"]
-            db.collection('users').document(uid).create(data)
+
+            # Filter fields to prevent Mass Assignment
+            filtered_data = {
+                k: v for k, v in data.items()
+                if k in ALLOWED_UPDATE_FIELDS or k in {"createdAt", "updatedAt", "isAdmin", "id"}
+            }
+
+            db.collection('users').document(uid).create(filtered_data)
 
             return jsonify({
                 "message": "User created",
@@ -179,7 +199,13 @@ def create_users_app():
                     last_name.capitalize()
                     data["lastName"] = last_name
 
-                db.collection('users').document(id).update(data)
+                # Filter fields to prevent Mass Assignment
+                filtered_data = {
+                    k: v for k, v in data.items()
+                    if k in ALLOWED_UPDATE_FIELDS or k == "updatedAt"
+                }
+
+                db.collection('users').document(id).update(filtered_data)
                 return jsonify({"message": f"User {id} updated"}), 200
             else:
                 return jsonify({
