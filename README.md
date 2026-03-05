@@ -4,6 +4,8 @@
 ```
 .
 ├── README.md
+├── JULES.md
+├── frontend_tips.md
 ├── firebase.json
 ├── firestore.indexes.json
 ├── functions/
