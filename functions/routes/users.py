@@ -164,22 +164,31 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
+                # Security: Prevent Mass Assignment by explicitly defining allowed fields
+                ALLOWED_UPDATE_FIELDS = [
+                    "firstName", "lastName", "phoneNumber", "bio",
+                    "imageUrl", "gender", "height", "weight",
+                    "dateOfBirth", "email"
+                ]
+
+                update_data = {}
+                for field in ALLOWED_UPDATE_FIELDS:
+                    if field in data:
+                        update_data[field] = data[field]
 
                 # Add updatedAt timestamp
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
+                update_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
-                first_name = data.get("firstName", "")
-                last_name = data.get("lastName", "")
+                first_name = update_data.get("firstName", "")
+                last_name = update_data.get("lastName", "")
                 if first_name:
                     first_name.capitalize()
-                    data["firstName"] = first_name
+                    update_data["firstName"] = first_name
                 if last_name:
                     last_name.capitalize()
-                    data["lastName"] = last_name
+                    update_data["lastName"] = last_name
 
-                db.collection('users').document(id).update(data)
+                db.collection('users').document(id).update(update_data)
                 return jsonify({"message": f"User {id} updated"}), 200
             else:
                 return jsonify({
