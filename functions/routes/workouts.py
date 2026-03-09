@@ -3,7 +3,7 @@ import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from helpers.workouts_helpers import (
     parse_bool,
@@ -113,7 +113,7 @@ def create_workouts_app():
         try:
             if request.method == 'POST':
                 data = request.get_json(silent=True) or {}
-                date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+                date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
                     "date": date_value, # get from user device, not an input
@@ -181,7 +181,7 @@ def create_workouts_app():
                     "details": f"Workout {template_id} not found"
                 }), 404
 
-            date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+            date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
             workout_ref = db.collection("users").document(user_id).collection("workouts").document()
             workout_data = {
                 "date": date_value,
@@ -196,6 +196,40 @@ def create_workouts_app():
             exercises = template_data.get("exercises") or []
             if not isinstance(exercises, list):
                 exercises = []
+
+            # BOLT: Optimize N+1 query problem by pre-fetching all exercise documents in a single batch call.
+            # This significantly reduces backend latency when starting a workout with many exercises.
+            exercise_refs = []
+
+            # Pre-pass to collect references of exercises without a name
+            for exercise in exercises:
+                exercise_id = None
+                name = None
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                else:
+                    if exercise is not None:
+                        name = str(exercise)
+
+                if exercise_id is not None and not isinstance(exercise_id, str):
+                    exercise_id = str(exercise_id)
+                if name is not None and not isinstance(name, str):
+                    name = str(name)
+
+                if not name and exercise_id:
+                    exercise_refs.append(db.collection("users").document(user_id).collection("exercises").document(exercise_id))
+
+            exercise_docs_map = {}
+            if exercise_refs:
+                try:
+                    # Batch fetch all required exercises
+                    docs = db.get_all(exercise_refs)
+                    for doc in docs:
+                        if doc.exists:
+                            exercise_docs_map[doc.id] = doc.to_dict().get("name")
+                except Exception as batch_err:
+                    logging.warning(f"Batch fetch for exercises failed: {batch_err}. Falling back to individual fetches.")
 
             batch = db.batch()
             batch.set(workout_ref, workout_data)
@@ -226,9 +260,14 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    if exercise_id in exercise_docs_map:
+                        name = exercise_docs_map[exercise_id]
+                    else:
+                        # Fallback for robustness
+                        exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
+                        if exercise_doc.exists:
+                            name = exercise_doc.to_dict().get("name")
+                            exercise_docs_map[exercise_id] = name
 
                 if not name and not exercise_id:
                     continue
