@@ -3,7 +3,7 @@ import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from helpers.workouts_helpers import (
     parse_bool,
@@ -113,7 +113,7 @@ def create_workouts_app():
         try:
             if request.method == 'POST':
                 data = request.get_json(silent=True) or {}
-                date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+                date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
                 workout_data = {
                     "date": date_value, # get from user device, not an input
@@ -181,7 +181,7 @@ def create_workouts_app():
                     "details": f"Workout {template_id} not found"
                 }), 404
 
-            date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+            date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
             workout_ref = db.collection("users").document(user_id).collection("workouts").document()
             workout_data = {
                 "date": date_value,
@@ -199,6 +199,22 @@ def create_workouts_app():
 
             batch = db.batch()
             batch.set(workout_ref, workout_data)
+
+            # BOLT: Pre-pass to collect exercises needing name lookup to prevent N+1 queries
+            missing_name_refs = []
+            for exercise in exercises:
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                    if not name and exercise_id:
+                        missing_name_refs.append(db.collection("users").document(user_id).collection("exercises").document(str(exercise_id)))
+
+            exercise_names_map = {}
+            if missing_name_refs:
+                docs = db.get_all(missing_name_refs)
+                for doc in docs:
+                    if doc.exists:
+                        exercise_names_map[doc.id] = doc.to_dict().get("name")
 
             for index, exercise in enumerate(exercises):
                 exercise_id = None
@@ -226,9 +242,7 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    name = exercise_names_map.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
