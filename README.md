@@ -3,6 +3,7 @@
 ## Project structure
 ```
 .
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
@@ -22,6 +23,7 @@
 │       └── workouts.py
 └── tests/
     ├── test_security.py
+    ├── test_security_exploit.py
     ├── test_users_routes.py
     ├── test_workouts_routes.py
     └── utils.py
