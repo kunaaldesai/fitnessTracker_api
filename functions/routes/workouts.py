@@ -3,7 +3,7 @@ import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from helpers.workouts_helpers import (
     parse_bool,
@@ -109,7 +109,7 @@ def create_workouts_app():
         try:
             if request.method == 'POST':
                 data = request.get_json(silent=True) or {}
-                date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+                date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
 
                 # Check for nested exercises
@@ -162,107 +162,6 @@ def create_workouts_app():
                 "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
                 "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
                 "details": f"Could not process workouts for user {user_id}"
-            }), 500
-
-    @workoutsApp.route('/users/<user_id>/workouts/start', methods=['POST'])
-    def start_workout(user_id):
-        try:
-            data = request.get_json(silent=True) or {}
-            template_id = data.get("workout_id")
-            if not template_id:
-                return jsonify({
-                    "error": ERROR_CODES["INVALID_REQUEST"]["message"],
-                    "code": ERROR_CODES["INVALID_REQUEST"]["code"],
-                    "details": "workout_id is required"
-                }), 400
-
-            template_ref = db.collection("workouts").document(template_id)
-            template_doc = template_ref.get()
-            if not template_doc.exists:
-                return jsonify({
-                    "error": ERROR_CODES["WORKOUT_NOT_FOUND"]["message"],
-                    "code": ERROR_CODES["WORKOUT_NOT_FOUND"]["code"],
-                    "details": f"Workout {template_id} not found"
-                }), 404
-
-            date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
-            workout_ref = db.collection("users").document(user_id).collection("workouts").document()
-            workout_data = {
-                "date": date_value,
-                "notes": data.get("notes", ""),
-                "timezone": data.get("timezone"),
-                "createdAt": firestore.SERVER_TIMESTAMP,
-                "updatedAt": firestore.SERVER_TIMESTAMP,
-                "workout_id": template_id
-            }
-
-            template_data = template_doc.to_dict() or {}
-            exercises = template_data.get("exercises") or []
-            if not isinstance(exercises, list):
-                exercises = []
-
-            batch = db.batch()
-            batch.set(workout_ref, workout_data)
-
-            for index, exercise in enumerate(exercises):
-                exercise_id = None
-                name = None
-                notes = ""
-                order = index
-
-                if isinstance(exercise, dict):
-                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
-                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
-                    notes = exercise.get("notes", "")
-                    order_value = exercise.get("order")
-                    if order_value is not None:
-                        try:
-                            order = int(order_value)
-                        except (TypeError, ValueError):
-                            order = index
-                else:
-                    if exercise is not None:
-                        name = str(exercise)
-
-                if exercise_id is not None and not isinstance(exercise_id, str):
-                    exercise_id = str(exercise_id)
-                if name is not None and not isinstance(name, str):
-                    name = str(name)
-
-                if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
-
-                if not name and not exercise_id:
-                    continue
-
-                item_ref = workout_ref.collection("items").document()
-                item_data = {
-                    "notes": notes,
-                    "order": order,
-                    "createdAt": firestore.SERVER_TIMESTAMP,
-                    "updatedAt": firestore.SERVER_TIMESTAMP
-                }
-                if exercise_id:
-                    item_data["exerciseId"] = exercise_id
-                if name:
-                    item_data["name"] = name
-
-                batch.set(item_ref, item_data)
-
-            batch.commit()
-
-            return jsonify({
-                "message": "Workout started",
-                "id": workout_ref.id
-            }), 200
-        except Exception as e:
-            logging.error(f"Could not start workout for user {user_id}: {e}")
-            return jsonify({
-                "error": ERROR_CODES["INTERNAL_SERVER_ERROR"]["message"],
-                "code": ERROR_CODES["INTERNAL_SERVER_ERROR"]["code"],
-                "details": f"Could not start workout for user {user_id}"
             }), 500
 
     @workoutsApp.route('/users/<user_id>/workouts/<workout_id>', methods=['GET', 'PUT', 'DELETE'])

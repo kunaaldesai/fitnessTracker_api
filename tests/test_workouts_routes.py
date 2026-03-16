@@ -151,56 +151,6 @@ class WorkoutsRoutesTestCase(unittest.TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["id"], "workout1")
 
-    def test_start_workout_requires_template_id(self):
-        response = self.client.post("/users/user1/workouts/start", json={})
-
-        self.assertEqual(response.status_code, 400)
-
-    def test_start_workout_template_not_found(self):
-        workouts_collection = MagicMock()
-        template_ref = MagicMock()
-        template_doc = make_doc("template1", {}, exists=False)
-        template_ref.get.return_value = template_doc
-        workouts_collection.document.return_value = template_ref
-
-        self.fake_db.collection.side_effect = lambda name: workouts_collection if name == "workouts" else MagicMock()
-
-        response = self.client.post("/users/user1/workouts/start", json={"workout_id": "template1"})
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_start_workout_success(self):
-        workouts_collection = MagicMock()
-        users_collection = MagicMock()
-
-        template_ref = MagicMock()
-        template_doc = make_doc("template1", {"exercises": [{"exerciseId": "ex1", "name": "Bench"}]})
-        template_ref.get.return_value = template_doc
-        workouts_collection.document.return_value = template_ref
-
-        user_doc = MagicMock()
-        user_workouts_collection = MagicMock()
-        workout_ref = MagicMock()
-        workout_ref.id = "workout1"
-        item_collection = MagicMock()
-        item_ref = MagicMock()
-
-        users_collection.document.return_value = user_doc
-        user_doc.collection.return_value = user_workouts_collection
-        user_workouts_collection.document.return_value = workout_ref
-        workout_ref.collection.return_value = item_collection
-        item_collection.document.return_value = item_ref
-
-        self.fake_db.collection.side_effect = lambda name: workouts_collection if name == "workouts" else users_collection
-        batch = MagicMock()
-        self.fake_db.batch.return_value = batch
-
-        response = self.client.post("/users/user1/workouts/start", json={"workout_id": "template1"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["id"], "workout1")
-        batch.commit.assert_called_once()
-
     def test_workout_detail_update_success(self):
         workout_ref = MagicMock()
         workout_doc = make_doc("workout1", {"date": "2024-01-10"})
