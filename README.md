@@ -6,6 +6,8 @@
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
+├── frontend_tips.md
+├── JULES.md
 ├── functions/
 │   ├── main.py
 │   ├── requirements.txt
