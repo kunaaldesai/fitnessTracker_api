@@ -3,6 +3,9 @@
 ## Project structure
 ```
 .
+├── .jules/
+│   └── sentinel.md
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
@@ -22,10 +25,14 @@
 │       └── workouts.py
 └── tests/
     ├── test_security.py
+    ├── test_security_exploit.py
     ├── test_users_routes.py
     ├── test_workouts_routes.py
     └── utils.py
 ```
+
+## Running Tests
+Run tests from repo root with `python -m unittest discover -s tests` after installing dependencies via `pip install -r functions/requirements.txt`.
 
 # keep this section
 firebase emulators:start --project fitness-tracker-39bca

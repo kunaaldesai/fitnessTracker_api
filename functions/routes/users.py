@@ -8,6 +8,11 @@ import json
 import logging
 
 
+ALLOWED_UPDATE_FIELDS = [
+    "firstName", "lastName", "phoneNumber", "bio", "imageUrl",
+    "gender", "height", "weight", "dateOfBirth", "email"
+]
+
 def create_users_app():
     # Initialize Flask app
     usersApp = Flask(__name__)
@@ -100,10 +105,10 @@ def create_users_app():
             first_name = data.get("firstName", "")
             last_name = data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
+                first_name = first_name.capitalize()
                 data["firstName"] = first_name
             if last_name:
-                last_name.capitalize()
+                last_name = last_name.capitalize()
                 data["lastName"] = last_name
             
             #additional user data not asked during onboarding
@@ -164,22 +169,24 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
+                # Security: Prevent privilege escalation and mass assignment
+                filtered_data = {
+                    k: v for k, v in data.items() if k in ALLOWED_UPDATE_FIELDS
+                }
 
                 # Add updatedAt timestamp
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
+                filtered_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
-                first_name = data.get("firstName", "")
-                last_name = data.get("lastName", "")
+                first_name = filtered_data.get("firstName", "")
+                last_name = filtered_data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
-                    data["firstName"] = first_name
+                    first_name = first_name.capitalize()
+                    filtered_data["firstName"] = first_name
                 if last_name:
-                    last_name.capitalize()
-                    data["lastName"] = last_name
+                    last_name = last_name.capitalize()
+                    filtered_data["lastName"] = last_name
 
-                db.collection('users').document(id).update(data)
+                db.collection('users').document(id).update(filtered_data)
                 return jsonify({"message": f"User {id} updated"}), 200
             else:
                 return jsonify({
