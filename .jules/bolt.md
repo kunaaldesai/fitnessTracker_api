@@ -1,3 +1,3 @@
-## 2024-05-23 - Firestore N+1 Optimization
-**Learning:** Firestore subcollection queries (e.g. fetching sets for each workout item) cause N+1 bottlenecks. Since Firestore SDK is thread-safe and these are I/O bound, `concurrent.futures.ThreadPoolExecutor` is an effective pattern to parallelize these queries without changing the data model.
-**Action:** Identify loops performing DB queries and refactor to use `executor.map` for parallel execution.
+## 2024-05-14 - [Bolt] Optimizing Workouts Route
+**Learning:** Found N+1 queries when fetching workout items and sets, though the previous bolt successfully parallelized fetching workout sets to improve performance in `/users/<user_id>/workouts/<workout_id>`. Now we noticed another N+1 problem: when starting a new workout from a template in `/users/<user_id>/workouts/start`, the code iterates over the exercises and if it's lacking a name, queries the user's exercises subcollection individually (`db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()`).
+**Action:** Before looping and making individual `get()` calls to Firebase, we should gather all missing `exercise_id` values, create a list of document references, and use `db.get_all(refs)` to fetch them in a single batch call. This transforms O(n) database calls into O(1).
