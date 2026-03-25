@@ -3,7 +3,7 @@ import concurrent.futures
 from config.db import db
 from .error_codes import ERROR_CODES
 from firebase_admin import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from helpers.workouts_helpers import (
     parse_bool,
@@ -109,7 +109,7 @@ def create_workouts_app():
         try:
             if request.method == 'POST':
                 data = request.get_json(silent=True) or {}
-                date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+                date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 workout_ref = db.collection("users").document(user_id).collection("workouts").document()
 
                 # Check for nested exercises
@@ -185,7 +185,7 @@ def create_workouts_app():
                     "details": f"Workout {template_id} not found"
                 }), 404
 
-            date_value = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+            date_value = data.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
             workout_ref = db.collection("users").document(user_id).collection("workouts").document()
             workout_data = {
                 "date": date_value,
