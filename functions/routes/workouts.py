@@ -197,6 +197,42 @@ def create_workouts_app():
             if not isinstance(exercises, list):
                 exercises = []
 
+            # BOLT: Pre-pass to collect all exercise IDs that need their names fetched
+            exercise_ids_to_fetch = set()
+            for exercise in exercises:
+                exercise_id = None
+                name = None
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                else:
+                    if exercise is not None:
+                        name = str(exercise)
+
+                if exercise_id is not None and not isinstance(exercise_id, str):
+                    exercise_id = str(exercise_id)
+                if name is not None and not isinstance(name, str):
+                    name = str(name)
+
+                if not name and exercise_id:
+                    exercise_ids_to_fetch.add(exercise_id)
+
+            # BOLT: Optimize N+1 query problem by batch fetching exercise names
+            exercise_name_map = {}
+            if exercise_ids_to_fetch:
+                exercise_refs = [db.collection("users").document(user_id).collection("exercises").document(ex_id) for ex_id in exercise_ids_to_fetch]
+                # Fallback to individual gets if get_all is not supported by the mock/db in some edge cases
+                try:
+                    exercise_docs = db.get_all(exercise_refs)
+                    for ex_doc in exercise_docs:
+                        if ex_doc.exists:
+                            exercise_name_map[ex_doc.id] = ex_doc.to_dict().get("name")
+                except AttributeError:
+                    for ref in exercise_refs:
+                        doc = ref.get()
+                        if doc.exists:
+                            exercise_name_map[doc.id] = doc.to_dict().get("name")
+
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
@@ -226,9 +262,8 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    # BOLT: Use pre-fetched lookup map
+                    name = exercise_name_map.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
