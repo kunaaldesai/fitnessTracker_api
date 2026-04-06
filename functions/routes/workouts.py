@@ -200,6 +200,36 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # BOLT: Optimize N+1 query problem by batch fetching exercise names
+            missing_name_refs = []
+            for exercise in exercises:
+                exercise_id = None
+                name = None
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                else:
+                    if exercise is not None:
+                        name = str(exercise)
+
+                if exercise_id is not None and not isinstance(exercise_id, str):
+                    exercise_id = str(exercise_id)
+                if name is not None and not isinstance(name, str):
+                    name = str(name)
+
+                if not name and exercise_id:
+                    ref = db.collection("users").document(user_id).collection("exercises").document(exercise_id)
+                    if ref not in missing_name_refs:
+                        missing_name_refs.append(ref)
+
+            exercise_names_map = {}
+            if missing_name_refs:
+                for doc in db.get_all(missing_name_refs):
+                    if doc.exists:
+                        doc_data = doc.to_dict()
+                        if doc_data and "name" in doc_data:
+                            exercise_names_map[doc.id] = doc_data["name"]
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -226,9 +256,14 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    # check lookup map first
+                    if exercise_id in exercise_names_map:
+                        name = exercise_names_map[exercise_id]
+                    else:
+                        # fallback
+                        exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
+                        if exercise_doc.exists:
+                            name = exercise_doc.to_dict().get("name")
 
                 if not name and not exercise_id:
                     continue
