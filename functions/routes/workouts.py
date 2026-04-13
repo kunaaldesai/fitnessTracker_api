@@ -646,7 +646,7 @@ def create_workouts_app():
             workout_ref = db.collection("workouts").document()
             workout_data = {
                 "description": data.get("description", ""),
-                "default": data.get("default", False), # dont allow user input
+                "default": False, # dont allow user input
                 "exercises": data.get("exercises", []),
                 "equipment": data.get("equipment", []),
                 "muscle_group": data.get("muscle_group", []),
