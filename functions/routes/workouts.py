@@ -200,6 +200,34 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # Pre-pass to collect all exercise IDs we need to look up
+            exercises_to_lookup = []
+            for exercise in exercises:
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                    if exercise_id and not name:
+                        exercises_to_lookup.append(str(exercise_id))
+                elif exercise is not None:
+                    # exercise is just an ID or string
+                    exercises_to_lookup.append(str(exercise))
+
+            # Batch lookup for exercise names
+            exercise_names_map = {}
+            if exercises_to_lookup:
+                exercise_refs = [db.collection("users").document(user_id).collection("exercises").document(e_id) for e_id in set(exercises_to_lookup)]
+                if hasattr(db, 'get_all'):
+                    docs = db.get_all(exercise_refs)
+                    for doc in docs:
+                        if doc.exists:
+                            exercise_names_map[doc.id] = doc.to_dict().get("name")
+                else:
+                    # Fallback if get_all is not available in emulator/test mock in same shape
+                    for ref in exercise_refs:
+                        doc = ref.get()
+                        if doc.exists:
+                            exercise_names_map[doc.id] = doc.to_dict().get("name")
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -226,9 +254,7 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    name = exercise_names_map.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
