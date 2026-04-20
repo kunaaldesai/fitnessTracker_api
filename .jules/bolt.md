@@ -1,3 +1,6 @@
 ## 2024-05-23 - Firestore N+1 Optimization
 **Learning:** Firestore subcollection queries (e.g. fetching sets for each workout item) cause N+1 bottlenecks. Since Firestore SDK is thread-safe and these are I/O bound, `concurrent.futures.ThreadPoolExecutor` is an effective pattern to parallelize these queries without changing the data model.
 **Action:** Identify loops performing DB queries and refactor to use `executor.map` for parallel execution.
+## 2024-05-24 - Pre-pass Batching for Firestore N+1 Queries
+**Learning:** When batching document retrieval from Firestore, iterating through the list to make single `db.collection().document().get()` requests causes N+1 queries.
+**Action:** Use a lightweight pre-pass loop to collect document references and use `db.get_all()` to fetch them in a single batch, then build a map for the actual iteration loop to prevent N+1 queries.

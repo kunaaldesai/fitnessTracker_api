@@ -200,6 +200,33 @@ def create_workouts_app():
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
+            # BOLT: Optimize N+1 query problem by pre-fetching missing exercise names
+            missing_name_refs = {}
+            for exercise in exercises:
+                exercise_id = None
+                name = None
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                else:
+                    if exercise is not None:
+                        name = str(exercise)
+
+                if exercise_id is not None and not isinstance(exercise_id, str):
+                    exercise_id = str(exercise_id)
+                if name is not None and not isinstance(name, str):
+                    name = str(name)
+
+                if not name and exercise_id:
+                    missing_name_refs[exercise_id] = db.collection("users").document(user_id).collection("exercises").document(exercise_id)
+
+            exercise_lookup = {}
+            if missing_name_refs:
+                docs = db.get_all(list(missing_name_refs.values()))
+                for doc in docs:
+                    if doc.exists:
+                        exercise_lookup[doc.id] = doc.to_dict().get("name")
+
             for index, exercise in enumerate(exercises):
                 exercise_id = None
                 name = None
@@ -226,9 +253,7 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    name = exercise_lookup.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
