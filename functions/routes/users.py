@@ -12,6 +12,9 @@ def create_users_app():
     # Initialize Flask app
     usersApp = Flask(__name__)
 
+    ALLOWED_CREATE_FIELDS = {"id", "firstName", "lastName", "phoneNumber", "bio", "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"}
+    ALLOWED_UPDATE_FIELDS = {"firstName", "lastName", "phoneNumber", "bio", "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"}
+
     # Firestore - getUser by ID
     @usersApp.route('/getUser/<id>', methods=['GET'])
     def getUser(id):
@@ -84,14 +87,17 @@ def create_users_app():
     @usersApp.route('/createUser', methods=['POST'])
     def createUser():
         try:
-            data = request.get_json(silent=True)
-            if not data:
+            raw_data = request.get_json(silent=True)
+            if not raw_data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                     "details": "No data provided."
                 }), 400
             
+            # Security: Allowlist to prevent Mass Assignment and Privilege Escalation
+            data = {k: v for k, v in raw_data.items() if k in ALLOWED_CREATE_FIELDS}
+
             # Add timestamps
             data["createdAt"] = firestore.SERVER_TIMESTAMP
             data["updatedAt"] = firestore.SERVER_TIMESTAMP
@@ -100,17 +106,16 @@ def create_users_app():
             first_name = data.get("firstName", "")
             last_name = data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
+                first_name = first_name.capitalize()
                 data["firstName"] = first_name
             if last_name:
-                last_name.capitalize()
+                last_name = last_name.capitalize()
                 data["lastName"] = last_name
             
             #additional user data not asked during onboarding
             data["bio"] = data.get("bio", "")
             data["imageUrl"] = data.get("imageUrl", "")
-            # Security: Prevent privilege escalation
-            data["isAdmin"] = False
+
             if data.get("gender") is None:
                 data["gender"] = "N/A"
 
@@ -155,8 +160,8 @@ def create_users_app():
     @usersApp.route('/updateUser/<id>', methods=['PUT'])
     def updateUser(id):
         try:
-            data = request.get_json(silent=True)
-            if not data:
+            raw_data = request.get_json(silent=True)
+            if not raw_data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
@@ -164,8 +169,8 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
+                # Security: Allowlist to prevent Mass Assignment and Privilege Escalation
+                data = {k: v for k, v in raw_data.items() if k in ALLOWED_UPDATE_FIELDS}
 
                 # Add updatedAt timestamp
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
@@ -173,10 +178,10 @@ def create_users_app():
                 first_name = data.get("firstName", "")
                 last_name = data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
+                    first_name = first_name.capitalize()
                     data["firstName"] = first_name
                 if last_name:
-                    last_name.capitalize()
+                    last_name = last_name.capitalize()
                     data["lastName"] = last_name
 
                 db.collection('users').document(id).update(data)
