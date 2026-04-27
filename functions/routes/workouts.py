@@ -197,6 +197,25 @@ def create_workouts_app():
             if not isinstance(exercises, list):
                 exercises = []
 
+            # BOLT: Pre-pass to gather missing exercise names to avoid N+1 query problem
+            missing_names_refs = []
+            for exercise in exercises:
+                if isinstance(exercise, dict):
+                    ex_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                    if ex_id and not name:
+                        missing_names_refs.append(db.collection("users").document(user_id).collection("exercises").document(str(ex_id)))
+
+            # Batch fetch missing names
+            exercise_names = {}
+            if missing_names_refs:
+                # Deduplicate references
+                unique_refs = list({ref.id: ref for ref in missing_names_refs}.values())
+                docs = db.get_all(unique_refs)
+                for doc in docs:
+                    if doc.exists:
+                        exercise_names[doc.id] = doc.to_dict().get("name")
+
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
@@ -226,9 +245,8 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    # BOLT: Use pre-fetched mapped names instead of N+1 .get() query
+                    name = exercise_names.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
