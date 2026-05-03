@@ -3,10 +3,18 @@
 ## Project structure
 ```
 .
+├── .firebaserc
+├── .gitignore
+├── .jules/
+│   ├── bolt.md
+│   └── sentinel.md
+├── frontend_tips.md
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
 ├── functions/
+│   ├── .gitignore
 │   ├── main.py
 │   ├── requirements.txt
 │   ├── config/
