@@ -2,13 +2,16 @@
 
 ## Project structure
 ```
-.
+./
+├── .jules/
+│   ├── bolt.md
+│   └── sentinel.md
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
+├── frontend_tips.md
 ├── functions/
-│   ├── main.py
-│   ├── requirements.txt
 │   ├── config/
 │   │   └── db.py
 │   ├── handlers/
@@ -16,6 +19,8 @@
 │   │   └── workouts_handlers.py
 │   ├── helpers/
 │   │   └── workouts_helpers.py
+│   ├── main.py
+│   ├── requirements.txt
 │   └── routes/
 │       ├── error_codes.py
 │       ├── users.py
