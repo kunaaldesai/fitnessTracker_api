@@ -2,31 +2,39 @@
 
 ## Project structure
 ```
-.
+./
+├── .jules/
+│   ├── bolt.md
+│   └── sentinel.md
+├── functions/
+│   ├── config/
+│   │   └── db.py
+│   ├── handlers/
+│   │   ├── users_handlers.py
+│   │   └── workouts_handlers.py
+│   ├── helpers/
+│   │   └── workouts_helpers.py
+│   ├── routes/
+│   │   ├── error_codes.py
+│   │   ├── users.py
+│   │   └── workouts.py
+│   ├── .gitignore
+│   ├── main.py
+│   └── requirements.txt
+├── tests/
+│   ├── test_security.py
+│   ├── test_security_exploit.py
+│   ├── test_users_routes.py
+│   ├── test_workouts_new_flow.py
+│   ├── test_workouts_routes.py
+│   └── utils.py
+├── .firebaserc
+├── .gitignore
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
-├── functions/
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── config/
-│   │   └── db.py
-│   ├── handlers/
-│   │   ├── users_handlers.py
-│   │   └── workouts_handlers.py
-│   ├── helpers/
-│   │   └── workouts_helpers.py
-│   └── routes/
-│       ├── error_codes.py
-│       ├── users.py
-│       └── workouts.py
-└── tests/
-    ├── test_security.py
-    ├── test_security_exploit.py
-    ├── test_users_routes.py
-    ├── test_workouts_new_flow.py
-    ├── test_workouts_routes.py
-    └── utils.py
+└── frontend_tips.md
 ```
 
 # keep this section
