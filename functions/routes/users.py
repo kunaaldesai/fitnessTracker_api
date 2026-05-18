@@ -92,30 +92,36 @@ def create_users_app():
                     "details": "No data provided."
                 }), 400
             
+            # Security: Prevent Mass Assignment by allowing only specific fields
+            ALLOWED_CREATE_FIELDS = [
+                "id", "firstName", "lastName", "phoneNumber", "bio",
+                "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"
+            ]
+
+            user_data = {k: data[k] for k in ALLOWED_CREATE_FIELDS if k in data}
+
             # Add timestamps
-            data["createdAt"] = firestore.SERVER_TIMESTAMP
-            data["updatedAt"] = firestore.SERVER_TIMESTAMP
+            user_data["createdAt"] = firestore.SERVER_TIMESTAMP
+            user_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
             # sanitize firstName and lastName
-            first_name = data.get("firstName", "")
-            last_name = data.get("lastName", "")
+            first_name = user_data.get("firstName", "")
+            last_name = user_data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
-                data["firstName"] = first_name
+                user_data["firstName"] = first_name.capitalize()
             if last_name:
-                last_name.capitalize()
-                data["lastName"] = last_name
+                user_data["lastName"] = last_name.capitalize()
             
             #additional user data not asked during onboarding
-            data["bio"] = data.get("bio", "")
-            data["imageUrl"] = data.get("imageUrl", "")
+            user_data["bio"] = user_data.get("bio", "")
+            user_data["imageUrl"] = user_data.get("imageUrl", "")
             # Security: Prevent privilege escalation
-            data["isAdmin"] = False
-            if data.get("gender") is None:
-                data["gender"] = "N/A"
+            user_data["isAdmin"] = False
+            if user_data.get("gender") is None:
+                user_data["gender"] = "N/A"
 
-            uid = data["id"]
-            db.collection('users').document(uid).create(data)
+            uid = user_data["id"]
+            db.collection('users').document(uid).create(user_data)
 
             return jsonify({
                 "message": "User created",
@@ -164,22 +170,25 @@ def create_users_app():
                 }), 400
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
+                # Security: Prevent Mass Assignment by allowing only specific fields
+                ALLOWED_UPDATE_FIELDS = [
+                    "firstName", "lastName", "phoneNumber", "bio",
+                    "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"
+                ]
+
+                update_data = {k: data[k] for k in ALLOWED_UPDATE_FIELDS if k in data}
 
                 # Add updatedAt timestamp
-                data["updatedAt"] = firestore.SERVER_TIMESTAMP
+                update_data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
-                first_name = data.get("firstName", "")
-                last_name = data.get("lastName", "")
+                first_name = update_data.get("firstName", "")
+                last_name = update_data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
-                    data["firstName"] = first_name
+                    update_data["firstName"] = first_name.capitalize()
                 if last_name:
-                    last_name.capitalize()
-                    data["lastName"] = last_name
+                    update_data["lastName"] = last_name.capitalize()
 
-                db.collection('users').document(id).update(data)
+                db.collection('users').document(id).update(update_data)
                 return jsonify({"message": f"User {id} updated"}), 200
             else:
                 return jsonify({
