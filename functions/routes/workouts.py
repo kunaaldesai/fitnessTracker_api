@@ -197,6 +197,24 @@ def create_workouts_app():
             if not isinstance(exercises, list):
                 exercises = []
 
+            # ⚡ Bolt: Optimize N+1 query problem by batch fetching exercise details
+            exercise_refs_to_fetch = []
+            for exercise in exercises:
+                if isinstance(exercise, dict):
+                    exercise_id = exercise.get("exerciseId") or exercise.get("exercise_id") or exercise.get("id")
+                    name = exercise.get("name") or exercise.get("exerciseName") or exercise.get("title")
+                    if not name and exercise_id:
+                        if not isinstance(exercise_id, str):
+                            exercise_id = str(exercise_id)
+                        exercise_refs_to_fetch.append(db.collection("users").document(user_id).collection("exercises").document(exercise_id))
+
+            exercise_name_map = {}
+            if exercise_refs_to_fetch:
+                fetched_docs = db.get_all(exercise_refs_to_fetch)
+                for doc in fetched_docs:
+                    if doc.exists:
+                        exercise_name_map[doc.id] = doc.to_dict().get("name")
+
             batch = db.batch()
             batch.set(workout_ref, workout_data)
 
@@ -226,9 +244,7 @@ def create_workouts_app():
                     name = str(name)
 
                 if not name and exercise_id:
-                    exercise_doc = db.collection("users").document(user_id).collection("exercises").document(exercise_id).get()
-                    if exercise_doc.exists:
-                        name = exercise_doc.to_dict().get("name")
+                    name = exercise_name_map.get(exercise_id)
 
                 if not name and not exercise_id:
                     continue
