@@ -84,14 +84,17 @@ def create_users_app():
     @usersApp.route('/createUser', methods=['POST'])
     def createUser():
         try:
-            data = request.get_json(silent=True)
-            if not data:
+            raw_data = request.get_json(silent=True)
+            if not raw_data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                     "details": "No data provided."
                 }), 400
             
+            ALLOWED_CREATE_FIELDS = {"id", "firstName", "lastName", "phoneNumber", "bio", "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"}
+            data = {k: v for k, v in raw_data.items() if k in ALLOWED_CREATE_FIELDS}
+
             # Add timestamps
             data["createdAt"] = firestore.SERVER_TIMESTAMP
             data["updatedAt"] = firestore.SERVER_TIMESTAMP
@@ -100,16 +103,14 @@ def create_users_app():
             first_name = data.get("firstName", "")
             last_name = data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
-                data["firstName"] = first_name
+                data["firstName"] = first_name.capitalize()
             if last_name:
-                last_name.capitalize()
-                data["lastName"] = last_name
+                data["lastName"] = last_name.capitalize()
             
             #additional user data not asked during onboarding
             data["bio"] = data.get("bio", "")
             data["imageUrl"] = data.get("imageUrl", "")
-            # Security: Prevent privilege escalation
+            # Security: Prevent privilege escalation via explicit allowlist (isAdmin not allowed)
             data["isAdmin"] = False
             if data.get("gender") is None:
                 data["gender"] = "N/A"
@@ -155,16 +156,20 @@ def create_users_app():
     @usersApp.route('/updateUser/<id>', methods=['PUT'])
     def updateUser(id):
         try:
-            data = request.get_json(silent=True)
-            if not data:
+            raw_data = request.get_json(silent=True)
+            if not raw_data:
                 return jsonify({
                     "error": ERROR_CODES["NO_DATA_PROVIDED"]["message"],
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                     "details": "No data provided."
                 }), 400
+
+            ALLOWED_UPDATE_FIELDS = {"firstName", "lastName", "phoneNumber", "bio", "imageUrl", "gender", "height", "weight", "dateOfBirth", "email"}
+            data = {k: v for k, v in raw_data.items() if k in ALLOWED_UPDATE_FIELDS}
+
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
+                # Security: Prevent privilege escalation via explicit allowlist (isAdmin not allowed)
                 data.pop("isAdmin", None)
 
                 # Add updatedAt timestamp
@@ -173,11 +178,9 @@ def create_users_app():
                 first_name = data.get("firstName", "")
                 last_name = data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
-                    data["firstName"] = first_name
+                    data["firstName"] = first_name.capitalize()
                 if last_name:
-                    last_name.capitalize()
-                    data["lastName"] = last_name
+                    data["lastName"] = last_name.capitalize()
 
                 db.collection('users').document(id).update(data)
                 return jsonify({"message": f"User {id} updated"}), 200
