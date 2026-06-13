@@ -3,23 +3,31 @@
 ## Project structure
 ```
 .
+├── .firebaserc
+├── .gitignore
+├── .jules/
+│   ├── bolt.md
+│   └── sentinel.md
+├── JULES.md
 ├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
+├── frontend_tips.md
 ├── functions/
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── config/
-│   │   └── db.py
-│   ├── handlers/
-│   │   ├── users_handlers.py
-│   │   └── workouts_handlers.py
-│   ├── helpers/
-│   │   └── workouts_helpers.py
-│   └── routes/
-│       ├── error_codes.py
-│       ├── users.py
-│       └── workouts.py
+│   ├── .gitignore
+│   ├── config/
+│   │   └── db.py
+│   ├── handlers/
+│   │   ├── users_handlers.py
+│   │   └── workouts_handlers.py
+│   ├── helpers/
+│   │   └── workouts_helpers.py
+│   ├── main.py
+│   ├── requirements.txt
+│   └── routes/
+│       ├── error_codes.py
+│       ├── users.py
+│       └── workouts.py
 └── tests/
     ├── test_security.py
     ├── test_security_exploit.py
