@@ -91,6 +91,9 @@ def create_users_app():
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                     "details": "No data provided."
                 }), 400
+
+            ALLOWED_CREATE_FIELDS = ['id', 'firstName', 'lastName', 'phoneNumber', 'bio', 'imageUrl', 'gender', 'height', 'weight', 'dateOfBirth', 'email']
+            data = {k: v for k, v in data.items() if k in ALLOWED_CREATE_FIELDS}
             
             # Add timestamps
             data["createdAt"] = firestore.SERVER_TIMESTAMP
@@ -100,10 +103,10 @@ def create_users_app():
             first_name = data.get("firstName", "")
             last_name = data.get("lastName", "")
             if first_name:
-                first_name.capitalize()
+                first_name = first_name.capitalize()
                 data["firstName"] = first_name
             if last_name:
-                last_name.capitalize()
+                last_name = last_name.capitalize()
                 data["lastName"] = last_name
             
             #additional user data not asked during onboarding
@@ -162,21 +165,21 @@ def create_users_app():
                     "code": ERROR_CODES["NO_DATA_PROVIDED"]["code"],
                     "details": "No data provided."
                 }), 400
+            ALLOWED_UPDATE_FIELDS = ['firstName', 'lastName', 'phoneNumber', 'bio', 'imageUrl', 'gender', 'height', 'weight', 'dateOfBirth', 'email']
+            data = {k: v for k, v in data.items() if k in ALLOWED_UPDATE_FIELDS}
+
             doc = db.collection('users').document(id).get()
             if doc.exists:
-                # Security: Prevent privilege escalation
-                data.pop("isAdmin", None)
-
                 # Add updatedAt timestamp
                 data["updatedAt"] = firestore.SERVER_TIMESTAMP
 
                 first_name = data.get("firstName", "")
                 last_name = data.get("lastName", "")
                 if first_name:
-                    first_name.capitalize()
+                    first_name = first_name.capitalize()
                     data["firstName"] = first_name
                 if last_name:
-                    last_name.capitalize()
+                    last_name = last_name.capitalize()
                     data["lastName"] = last_name
 
                 db.collection('users').document(id).update(data)
