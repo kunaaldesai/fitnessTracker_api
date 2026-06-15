@@ -246,13 +246,19 @@ class WorkoutsRoutesTestCase(unittest.TestCase):
         item_doc.reference.collection.return_value = sets_ref
         items_ref.stream.return_value = [item_doc]
 
+        mock_db = MagicMock()
+        mock_batch = MagicMock()
+        mock_db.batch.return_value = mock_batch
+
         with patch.object(workouts_routes, "get_workout_ref", return_value=(workout_ref, workout_doc)):
-            response = self.client.delete("/users/user1/workouts/workout1")
+            with patch.object(workouts_routes, "db", mock_db):
+                response = self.client.delete("/users/user1/workouts/workout1")
 
         self.assertEqual(response.status_code, 200)
-        set_doc.reference.delete.assert_called_once()
-        item_doc.reference.delete.assert_called_once()
-        workout_ref.delete.assert_called_once()
+        mock_batch.delete.assert_any_call(set_doc.reference)
+        mock_batch.delete.assert_any_call(item_doc.reference)
+        mock_batch.delete.assert_any_call(workout_ref)
+        mock_batch.commit.assert_called_once()
 
     def test_workout_items_post_success(self):
         workout_ref = MagicMock()
@@ -336,12 +342,18 @@ class WorkoutsRoutesTestCase(unittest.TestCase):
         sets_ref.stream.return_value = [set_doc]
         item_ref.collection.return_value = sets_ref
 
+        mock_db = MagicMock()
+        mock_batch = MagicMock()
+        mock_db.batch.return_value = mock_batch
+
         with patch.object(workouts_routes, "get_item_ref", return_value=(workout_ref, item_ref, item_doc)):
-            response = self.client.delete("/users/user1/workouts/workout1/items/item1")
+            with patch.object(workouts_routes, "db", mock_db):
+                response = self.client.delete("/users/user1/workouts/workout1/items/item1")
 
         self.assertEqual(response.status_code, 200)
-        set_doc.reference.delete.assert_called_once()
-        item_ref.delete.assert_called_once()
+        mock_batch.delete.assert_any_call(set_doc.reference)
+        mock_batch.delete.assert_any_call(item_ref)
+        mock_batch.commit.assert_called_once()
 
     def test_workout_sets_post_requires_reps(self):
         workout_ref = MagicMock()

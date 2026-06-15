@@ -307,13 +307,29 @@ def create_workouts_app():
                 return jsonify({"message": f"Workout {workout_id} updated"}), 200
 
             try:
+                batch = db.batch()
+                op_count = 0
+                def commit_batch_if_needed():
+                    nonlocal batch, op_count
+                    if op_count >= 490:
+                        batch.commit()
+                        batch = db.batch()
+                        op_count = 0
+
                 items_ref = workout_ref.collection("items")
                 for item_doc in items_ref.stream():
                     sets_ref = item_doc.reference.collection("sets")
                     for set_doc in sets_ref.stream():
-                        set_doc.reference.delete()
-                    item_doc.reference.delete()
-                workout_ref.delete()
+                        batch.delete(set_doc.reference)
+                        op_count += 1
+                        commit_batch_if_needed()
+                    batch.delete(item_doc.reference)
+                    op_count += 1
+                    commit_batch_if_needed()
+                batch.delete(workout_ref)
+                op_count += 1
+                if op_count > 0:
+                    batch.commit()
             except Exception as deletion_error:
                 logging.error(f"Could not delete workout {workout_id}: {deletion_error}")
                 return jsonify({
@@ -437,10 +453,24 @@ def create_workouts_app():
                 return jsonify({"message": f"Workout exercise {item_id} updated"}), 200
 
             try:
+                batch = db.batch()
+                op_count = 0
+                def commit_batch_if_needed():
+                    nonlocal batch, op_count
+                    if op_count >= 490:
+                        batch.commit()
+                        batch = db.batch()
+                        op_count = 0
+
                 sets_ref = item_ref.collection("sets")
                 for set_doc in sets_ref.stream():
-                    set_doc.reference.delete()
-                item_ref.delete()
+                    batch.delete(set_doc.reference)
+                    op_count += 1
+                    commit_batch_if_needed()
+                batch.delete(item_ref)
+                op_count += 1
+                if op_count > 0:
+                    batch.commit()
             except Exception as deletion_error:
                 logging.error(f"Could not delete workout exercise {item_id}: {deletion_error}")
                 return jsonify({
