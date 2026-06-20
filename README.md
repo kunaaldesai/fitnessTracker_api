@@ -1,34 +1,94 @@
-# edit here
+# FitTrack Firebase API
 
-## Project structure
-```
+Firebase Functions backend for the FitTrack workout tracker.
+
+## Structure
+
+```text
 .
-├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
+├── public/
+│   └── index.html
 ├── functions/
 │   ├── main.py
 │   ├── requirements.txt
 │   ├── config/
 │   │   └── db.py
 │   ├── handlers/
-│   │   ├── users_handlers.py
-│   │   └── workouts_handlers.py
+│   │   └── fitness_handlers.py
 │   ├── helpers/
-│   │   └── workouts_helpers.py
+│   │   ├── auth_helpers.py
+│   │   ├── fitness_helpers.py
+│   │   └── fitness_profile_helpers.py
 │   └── routes/
-│       ├── error_codes.py
-│       ├── users.py
-│       └── workouts.py
+│       └── fitness.py
 └── tests/
-    ├── test_security.py
-    ├── test_security_exploit.py
-    ├── test_users_routes.py
-    ├── test_workouts_new_flow.py
-    ├── test_workouts_routes.py
+    ├── test_fitness_api.py
     └── utils.py
 ```
 
-# keep this section
-firebase emulators:start --project fitness-tracker-39bca
-firebase deploy --only functions --project fitness-tracker-39bca
+## API
+
+All deployed endpoints are under:
+
+```text
+/api/fitness/
+```
+
+Every request requires:
+
+```text
+Authorization: Bearer <Firebase ID token>
+```
+
+The API derives the user from the verified Firebase token. Clients should not send user ids or owner ids.
+
+Main endpoints:
+
+```text
+GET  /api/fitness/day/?date=YYYY-MM-DD
+GET  /api/fitness/exercise-options/
+GET  /api/fitness/analytics/
+GET  /api/fitness/records/
+GET  /api/fitness/profile/
+POST /api/fitness/profile/
+POST /api/fitness/exercises/create/
+POST /api/fitness/exercises/<exercise_id>/update/
+POST /api/fitness/exercises/<exercise_id>/delete/
+POST /api/fitness/exercises/reorder/
+GET  /api/fitness/exercises/last-sessions/
+GET  /api/fitness/exercises/previous-workout/
+POST /api/fitness/exercises/copy-from-date/
+GET  /api/fitness/exercise-history/
+GET  /api/fitness/workout-calendar/
+```
+
+## Data Model
+
+- `users/{uid}` stores the authenticated user's profile and `fitness_profile`.
+- `fitness_exercises/{exercise_id}` stores logged exercises using `owner_uuid = uid`.
+
+The old nested workout/user endpoint schema is no longer used.
+
+## Local Tests
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+Tests use mocked Firebase Auth and in-memory Firestore. Do not hit live databases from unit tests.
+
+## Deploy
+
+The clean `/api/fitness/**` path is provided by Firebase Hosting rewrites, so deploy Functions and Hosting together after route or rewrite changes:
+
+```bash
+firebase deploy --only functions,hosting --project fitness-tracker-39bca
+```
+
+Use `--force` when replacing or deleting old function exports in a non-interactive deploy:
+
+```bash
+firebase deploy --only functions,hosting --project fitness-tracker-39bca --force
+```
