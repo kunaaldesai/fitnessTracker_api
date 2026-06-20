@@ -1,0 +1,259 @@
+import importlib
+import logging
+import unittest
+
+from utils import InMemoryFirestore, ensure_functions_on_path, install_fake_firebase
+
+ensure_functions_on_path()
+_, fake_auth = install_fake_firebase(InMemoryFirestore())
+
+fitness_routes = importlib.import_module("routes.fitness")
+
+
+class FitnessApiTestCase(unittest.TestCase):
+    def setUp(self):
+        self.db = InMemoryFirestore()
+        fitness_routes.db = self.db
+        fake_auth.verify_id_token.reset_mock()
+        fake_auth.verify_id_token.side_effect = None
+        fake_auth.verify_id_token.return_value = {
+            "uid": "user-1",
+            "email": "user@example.com",
+            "name": "Ada Lovelace",
+        }
+        self.app = fitness_routes.create_fitness_app()
+        self.client = self.app.test_client()
+
+    def auth_headers(self, token="valid-token"):
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_missing_auth_is_rejected(self):
+        response = self.client.get("/api/fitness/profile/")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["status"], "error")
+
+    def test_invalid_auth_is_rejected(self):
+        fake_auth.verify_id_token.side_effect = ValueError("bad token")
+
+        response = self.client.get("/api/fitness/profile/", headers=self.auth_headers("bad"))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "Invalid Firebase ID token.")
+
+    def test_profile_get_returns_defaults_and_creates_user_doc(self):
+        response = self.client.get("/api/fitness/profile/", headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["user"]["uuid"], "user-1")
+        self.assertEqual(data["profile"]["activity_level"], "sedentary")
+        self.assertEqual(data["profile"]["bmr_formula"], "katch_mcardle")
+        self.assertIn("body_fat_percent", data["missing_fields"]["bmr"])
+        self.assertEqual(self.db.get_doc("users", "user-1")["uuid"], "user-1")
+
+    def test_profile_post_saves_metrics_in_firestore(self):
+        payload = {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "date_of_birth": "1990-01-01",
+            "sex_for_bmr": "female",
+            "height_feet": 5,
+            "height_inches": 7,
+            "weight_lbs": 140,
+            "activity_level": "moderately_active",
+            "bmr_formula": "mifflin_st_jeor",
+            "custom_goal_lbs_per_week": 0.5,
+        }
+
+        response = self.client.post("/api/fitness/profile/", json=payload, headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertGreater(data["metrics"]["bmi"], 0)
+        self.assertGreater(data["metrics"]["bmr"], 0)
+        self.assertGreater(data["metrics"]["tdee"], data["metrics"]["bmr"])
+        user_doc = self.db.get_doc("users", "user-1")
+        self.assertEqual(user_doc["first_name"], "Ada")
+        self.assertEqual(user_doc["fitness_profile"]["activity_level"], "moderately_active")
+
+    def test_profile_validation_error(self):
+        response = self.client.post(
+            "/api/fitness/profile/",
+            json={"height_feet": 9, "height_inches": 0},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Height in feet", response.get_json()["error"])
+
+    def test_exercise_crud_day_records_analytics_history_calendar(self):
+        create_response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={
+                "owner_uuid": "attacker",
+                "name": "Bench Press",
+                "category": "Chest",
+                "workout_date": "2026-06-01",
+                "sets": [{"weight": 100, "reps": 10, "rpe": 8}],
+            },
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(create_response.status_code, 200)
+        exercise = create_response.get_json()["exercise"]
+        exercise_id = exercise["id"]
+        self.assertEqual(exercise["owner_uuid"], "user-1")
+        self.assertEqual(exercise["total_volume"], 1000)
+
+        update_response = self.client.post(
+            f"/api/fitness/exercises/{exercise_id}/update/",
+            json={"sets": [{"weight": 105, "reps": 8, "rpe": 8.5}], "notes": "felt good"},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.get_json()["exercise"]["notes"], "felt good")
+
+        day_response = self.client.get(
+            "/api/fitness/day/?date=2026-06-01",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(day_response.status_code, 200)
+        self.assertEqual(day_response.get_json()["summary"]["exercise_count"], 1)
+        self.assertEqual(day_response.get_json()["summary"]["total_volume"], 840)
+
+        records_response = self.client.get("/api/fitness/records/?range=all", headers=self.auth_headers())
+        self.assertEqual(records_response.status_code, 200)
+        self.assertEqual(records_response.get_json()["records"][0]["exercise_name"], "Bench Press")
+
+        analytics_response = self.client.get("/api/fitness/analytics/?range=all", headers=self.auth_headers())
+        self.assertEqual(analytics_response.status_code, 200)
+        self.assertEqual(analytics_response.get_json()["summary"]["total_volume"], 840)
+        self.assertEqual(analytics_response.get_json()["muscle_split"][0]["group"], "Chest")
+
+        history_response = self.client.get(
+            "/api/fitness/exercise-history/?name=Bench%20Press",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual(history_response.get_json()["session_count"], 1)
+
+        calendar_response = self.client.get(
+            "/api/fitness/workout-calendar/?range=all",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(calendar_response.status_code, 200)
+        self.assertEqual(calendar_response.get_json()["total_workout_days"], 1)
+
+        delete_response = self.client.post(
+            f"/api/fitness/exercises/{exercise_id}/delete/",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.get_json()["deleted"], True)
+
+    def test_exercise_options_include_default_and_custom(self):
+        self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Custom Press", "category": "Shoulders", "workout_date": "2026-06-01"},
+            headers=self.auth_headers(),
+        )
+
+        response = self.client.get("/api/fitness/exercise-options/", headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        names = {row["name"] for row in response.get_json()["exercises"]}
+        self.assertIn("Flat Dumbbell Bench Press", names)
+        self.assertIn("Custom Press", names)
+
+    def test_reorder_previous_last_sessions_and_copy(self):
+        first = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Squat", "category": "Quads", "workout_date": "2026-06-01", "sets": [{"weight": 200, "reps": 5}]},
+            headers=self.auth_headers(),
+        ).get_json()["exercise"]
+        second = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Row", "category": "Back", "workout_date": "2026-06-01", "sets": [{"weight": 120, "reps": 8}]},
+            headers=self.auth_headers(),
+        ).get_json()["exercise"]
+
+        reorder_response = self.client.post(
+            "/api/fitness/exercises/reorder/",
+            json={"workout_date": "2026-06-01", "order": [second["id"], first["id"]]},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(reorder_response.status_code, 200)
+
+        day_response = self.client.get("/api/fitness/day/?date=2026-06-01", headers=self.auth_headers())
+        self.assertEqual([row["name"] for row in day_response.get_json()["exercises"]], ["Row", "Squat"])
+
+        previous_response = self.client.get(
+            "/api/fitness/exercises/previous-workout/?before=2026-06-02",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(previous_response.status_code, 200)
+        self.assertEqual(previous_response.get_json()["previous_date"], "2026-06-01")
+
+        copy_response = self.client.post(
+            "/api/fitness/exercises/copy-from-date/",
+            json={"source_date": "2026-06-01", "target_date": "2026-06-02"},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(copy_response.status_code, 200)
+        self.assertEqual(copy_response.get_json()["count"], 2)
+
+        last_sessions_response = self.client.get(
+            "/api/fitness/exercises/last-sessions/?date=2026-06-02",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(last_sessions_response.status_code, 200)
+        self.assertIn("Squat", last_sessions_response.get_json()["last_sessions"])
+
+    def test_ownership_is_enforced(self):
+        self.db.seed(
+            "fitness_exercises",
+            "other-ex",
+            {
+                "owner_uuid": "other-user",
+                "workout_date": "2026-06-01",
+                "order_index": 0,
+                "name": "Secret Lift",
+                "category": "Back",
+                "movement_type": "Strength",
+                "sets": [{"weight": 100, "reps": 5, "rpe": None}],
+            },
+        )
+
+        response = self.client.post(
+            "/api/fitness/exercises/other-ex/update/",
+            json={"notes": "steal"},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Exercise not found.")
+        self.assertNotEqual(self.db.get_doc("fitness_exercises", "other-ex").get("notes"), "steal")
+
+    def test_internal_errors_do_not_leak_details(self):
+        fitness_routes.db = BrokenDb()
+        app = fitness_routes.create_fitness_app()
+        client = app.test_client()
+
+        logging.disable(logging.CRITICAL)
+        try:
+            response = client.get("/api/fitness/profile/", headers=self.auth_headers())
+        finally:
+            logging.disable(logging.NOTSET)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json()["error"], "Unable to process FitTrack request right now.")
+
+
+class BrokenDb:
+    def collection(self, name):
+        raise RuntimeError("database host 10.0.0.4 unreachable")
+
+
+if __name__ == "__main__":
+    unittest.main()
