@@ -24,7 +24,11 @@ from helpers.fitness_helpers import (
 )
 from helpers.fitness_profile_helpers import (
     build_fitness_profile_payload,
+    build_weight_history_payload,
+    create_weight_entry_payload,
+    delete_weight_entry_payload,
     save_fitness_profile_payload,
+    update_weight_entry_payload,
 )
 
 
@@ -160,6 +164,49 @@ def create_fitness_app():
                 db,
                 auth_user=g.auth_user,
                 payload=_read_json_body(),
+            )
+        )
+
+    @fit_route("/profile/weight-history/", methods=["GET"])
+    def fitness_weight_history_api():
+        return _handle(
+            lambda: build_weight_history_payload(
+                db,
+                auth_user=g.auth_user,
+                range_key=request.args.get("range"),
+                start_date=request.args.get("start_date"),
+                end_date=request.args.get("end_date"),
+            )
+        )
+
+    @fit_route("/profile/weight-history/create/", methods=["POST"])
+    def fitness_create_weight_entry_api():
+        return _handle(
+            lambda: create_weight_entry_payload(
+                db,
+                auth_user=g.auth_user,
+                payload=_read_json_body(),
+            )
+        )
+
+    @fit_route("/profile/weight-history/<string:entry_id>/update/", methods=["POST"])
+    def fitness_update_weight_entry_api(entry_id: str):
+        return _handle(
+            lambda: update_weight_entry_payload(
+                db,
+                auth_user=g.auth_user,
+                entry_id=entry_id,
+                payload=_read_json_body(),
+            )
+        )
+
+    @fit_route("/profile/weight-history/<string:entry_id>/delete/", methods=["POST"])
+    def fitness_delete_weight_entry_api(entry_id: str):
+        return _handle(
+            lambda: delete_weight_entry_payload(
+                db,
+                auth_user=g.auth_user,
+                entry_id=entry_id,
             )
         )
 

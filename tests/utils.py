@@ -70,6 +70,9 @@ class InMemoryDocumentReference:
         self._collection = collection
         self.id = doc_id
 
+    def collection(self, name):
+        return InMemoryCollectionReference(self._collection._db, f"{self._collection.name}/{self.id}/{name}")
+
     def get(self):
         if self.id not in self._collection._docs:
             return InMemoryDocumentSnapshot(self, {}, exists=False)

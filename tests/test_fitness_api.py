@@ -1,6 +1,7 @@
 import importlib
 import logging
 import unittest
+from datetime import date, timedelta
 
 from utils import InMemoryFirestore, ensure_functions_on_path, install_fake_firebase
 
@@ -87,6 +88,202 @@ class FitnessApiTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("Height in feet", response.get_json()["error"])
+
+    def test_profile_goal_validation_error(self):
+        response = self.client.post(
+            "/api/fitness/profile/",
+            json={"target_weight_lbs": -10},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Target weight", response.get_json()["error"])
+
+        response = self.client.post(
+            "/api/fitness/profile/",
+            json={"custom_goal_lbs_per_week": 3},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Custom goal", response.get_json()["error"])
+
+    def test_weight_history_creates_baseline_once_from_existing_profile_weight(self):
+        today = date.today().isoformat()
+        self.db.seed(
+            "users",
+            "user-1",
+            {
+                "uuid": "user-1",
+                "uid": "user-1",
+                "email": "user@example.com",
+                "fitness_profile": {
+                    "height_feet": 5,
+                    "height_inches": 10,
+                    "weight_lbs": 180,
+                    "activity_level": "sedentary",
+                    "bmr_formula": "mifflin_st_jeor",
+                    "date_of_birth": "1990-01-01",
+                    "sex_for_bmr": "male",
+                    "weight_history_initialized": False,
+                },
+            },
+        )
+
+        response = self.client.get("/api/fitness/profile/weight-history/?range=all", headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["date"], today)
+        self.assertEqual(data["entries"][0]["weight_lbs"], 180)
+        self.assertTrue(self.db.get_doc("users", "user-1")["fitness_profile"]["weight_history_initialized"])
+
+        self.client.post(
+            f"/api/fitness/profile/weight-history/{today}/delete/",
+            headers=self.auth_headers(),
+        )
+        response = self.client.get("/api/fitness/profile/weight-history/?range=all", headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["entries"], [])
+
+    def test_weight_entry_crud_converts_kg_upserts_and_syncs_latest_profile_weight(self):
+        first = self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_kg": 80, "note": "Morning"},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(first.status_code, 200)
+        entry = first.get_json()["entry"]
+        self.assertEqual(entry["date"], "2026-06-01")
+        self.assertAlmostEqual(entry["weight_lbs"], 176.37)
+        self.assertEqual(entry["source_unit"], "kg")
+        self.assertAlmostEqual(self.db.get_doc("users", "user-1")["fitness_profile"]["weight_lbs"], 176.37)
+
+        second = self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_kg": 81},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(second.get_json()["weight_history"]["entries"]), 1)
+        self.assertAlmostEqual(second.get_json()["entry"]["weight_lbs"], 178.57)
+
+    def test_weight_entry_update_date_conflict_and_delete_latest_sync(self):
+        self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_lbs": 180},
+            headers=self.auth_headers(),
+        )
+        self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-02", "weight_lbs": 181},
+            headers=self.auth_headers(),
+        )
+
+        conflict = self.client.post(
+            "/api/fitness/profile/weight-history/2026-06-01/update/",
+            json={"date": "2026-06-02", "weight_lbs": 182},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(conflict.status_code, 400)
+        self.assertIn("already exists", conflict.get_json()["error"])
+
+        moved = self.client.post(
+            "/api/fitness/profile/weight-history/2026-06-01/update/",
+            json={"date": "2026-06-03", "weight_lbs": 182},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(moved.status_code, 200)
+        self.assertEqual(moved.get_json()["entry"]["date"], "2026-06-03")
+        self.assertEqual(self.db.get_doc("users", "user-1")["fitness_profile"]["weight_lbs"], 182)
+
+        delete_latest = self.client.post(
+            "/api/fitness/profile/weight-history/2026-06-03/delete/",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(delete_latest.status_code, 200)
+        self.assertEqual(self.db.get_doc("users", "user-1")["fitness_profile"]["weight_lbs"], 181)
+
+        self.client.post(
+            "/api/fitness/profile/weight-history/2026-06-02/delete/",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(self.db.get_doc("users", "user-1")["fitness_profile"]["weight_lbs"], 181)
+
+    def test_weight_history_includes_metrics_and_goal_projection(self):
+        profile_payload = {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "date_of_birth": "1990-01-01",
+            "sex_for_bmr": "female",
+            "height_feet": 5,
+            "height_inches": 7,
+            "weight_lbs": 150,
+            "activity_level": "moderately_active",
+            "bmr_formula": "mifflin_st_jeor",
+            "target_weight_lbs": 140,
+            "custom_goal_lbs_per_week": -1,
+        }
+        self.client.post("/api/fitness/profile/", json=profile_payload, headers=self.auth_headers())
+        self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_lbs": 152},
+            headers=self.auth_headers(),
+        )
+        self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-08", "weight_lbs": 150},
+            headers=self.auth_headers(),
+        )
+
+        response = self.client.get("/api/fitness/profile/weight-history/?range=all", headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertGreaterEqual(len(data["chart_points"]), 2)
+        self.assertGreater(data["chart_points"][0]["bmi"], 0)
+        self.assertGreater(data["chart_points"][0]["bmr"], 0)
+        self.assertGreater(data["chart_points"][0]["tdee"], data["chart_points"][0]["bmr"])
+        self.assertEqual(data["goal"]["target_weight_lbs"], 140)
+        self.assertEqual(data["summary"]["target_delta_lbs"], -10)
+        self.assertIsNotNone(data["goal"]["estimated_goal_date"])
+
+    def test_weight_history_rejects_future_and_invalid_weights(self):
+        future = (date.today() + timedelta(days=1)).isoformat()
+
+        response = self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": future, "weight_lbs": 180},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("future", response.get_json()["error"])
+
+        response = self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_lbs": 0},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("positive", response.get_json()["error"])
+
+        response = self.client.get(
+            "/api/fitness/profile/weight-history/?start_date=not-a-date",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid start date", response.get_json()["error"])
+
+        response = self.client.get(
+            f"/api/fitness/profile/weight-history/?end_date={future}",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("future", response.get_json()["error"])
 
     def test_exercise_crud_day_records_analytics_history_calendar(self):
         create_response = self.client.post(

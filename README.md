@@ -53,6 +53,10 @@ GET  /api/fitness/analytics/
 GET  /api/fitness/records/
 GET  /api/fitness/profile/
 POST /api/fitness/profile/
+GET  /api/fitness/profile/weight-history/
+POST /api/fitness/profile/weight-history/create/
+POST /api/fitness/profile/weight-history/<entry_id>/update/
+POST /api/fitness/profile/weight-history/<entry_id>/delete/
 POST /api/fitness/exercises/create/
 POST /api/fitness/exercises/<exercise_id>/update/
 POST /api/fitness/exercises/<exercise_id>/delete/
@@ -67,6 +71,7 @@ GET  /api/fitness/workout-calendar/
 ## Data Model
 
 - `users/{uid}` stores the authenticated user's profile and `fitness_profile`.
+- `users/{uid}/weight_entries/{YYYY-MM-DD}` stores one body-weight entry per calendar date.
 - `fitness_exercises/{exercise_id}` stores logged exercises using `owner_uuid = uid`.
 
 The old nested workout/user endpoint schema is no longer used.
