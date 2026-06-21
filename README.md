@@ -5,27 +5,38 @@ Firebase Functions backend for the FitTrack workout tracker.
 ## Structure
 
 ```text
-.
+./
+├── .firebaserc
+├── .gitignore
+├── .jules/
+│   ├── bolt.md
+│   └── sentinel.md
+├── JULES.md
+├── README.md
 ├── firebase.json
 ├── firestore.indexes.json
-├── public/
-│   └── index.html
+├── frontend_tips.md
 ├── functions/
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── config/
-│   │   └── db.py
-│   ├── handlers/
-│   │   └── fitness_handlers.py
-│   ├── helpers/
-│   │   ├── auth_helpers.py
-│   │   ├── fitness_helpers.py
-│   │   └── fitness_profile_helpers.py
-│   └── routes/
-│       └── fitness.py
+│   ├── .gitignore
+│   ├── config/
+│   │   └── db.py
+│   ├── handlers/
+│   │   └── fitness_handlers.py
+│   ├── helpers/
+│   │   ├── auth_helpers.py
+│   │   ├── fitness_helpers.py
+│   │   └── fitness_profile_helpers.py
+│   ├── main.py
+│   ├── requirements.txt
+│   └── routes/
+│       └── fitness.py
+├── public/
+│   └── index.html
 └── tests/
     ├── test_fitness_api.py
     └── utils.py
+
+9 directories, 21 files
 ```
 
 ## API
