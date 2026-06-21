@@ -1,6 +1,6 @@
-# FitTrack Firebase API
+# Logmaxxing Firebase API
 
-Firebase Functions backend for the FitTrack workout tracker.
+Firebase Functions backend for the Logmaxxing workout tracker.
 
 ## Structure
 

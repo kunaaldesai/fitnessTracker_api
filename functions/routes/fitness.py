@@ -71,11 +71,11 @@ def _handle(handler: Callable[[], dict[str, Any]]):
         message = str(exc)
         if message.startswith("Unable to resolve") or message.startswith("Firestore is not configured"):
             return _error(message, 503)
-        logging.exception("FitTrack API runtime failure")
-        return _error("Unable to process FitTrack request right now.", 500)
+        logging.exception("Logmaxxing API runtime failure")
+        return _error("Unable to process Logmaxxing request right now.", 500)
     except Exception:
-        logging.exception("FitTrack API request failed")
-        return _error("Unable to process FitTrack request right now.", 500)
+        logging.exception("Logmaxxing API request failed")
+        return _error("Unable to process Logmaxxing request right now.", 500)
 
 
 def create_fitness_app():

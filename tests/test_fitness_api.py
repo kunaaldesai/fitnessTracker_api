@@ -444,7 +444,7 @@ class FitnessApiTestCase(unittest.TestCase):
             logging.disable(logging.NOTSET)
 
         self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.get_json()["error"], "Unable to process FitTrack request right now.")
+        self.assertEqual(response.get_json()["error"], "Unable to process Logmaxxing request right now.")
 
 
 class BrokenDb:
