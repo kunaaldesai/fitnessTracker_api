@@ -388,9 +388,61 @@ class FitnessApiTestCase(unittest.TestCase):
         response = self.client.get("/api/fitness/exercise-options/", headers=self.auth_headers())
 
         self.assertEqual(response.status_code, 200)
-        names = {row["name"] for row in response.get_json()["exercises"]}
+        payload = response.get_json()
+        names = {row["name"] for row in payload["exercises"]}
         self.assertIn("Flat Dumbbell Bench Press", names)
         self.assertIn("Custom Press", names)
+        self.assertIn("Forearms", payload["categories"])
+        self.assertIn("Calves", payload["categories"])
+        self.assertIn("Adductors", payload["categories"])
+        self.assertIn("Stretching", payload["types"])
+        self.assertIn("Hamstring Stretch", names)
+        self.assertIn("Barbell Bench Press", names)
+        self.assertIn("Elliptical", names)
+        self.assertIn("Pigeon Pose", names)
+        self.assertGreaterEqual(payload["default_count"], 250)
+
+    def test_cardio_and_stretching_sets_use_effort_fields(self):
+        cardio_response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={
+                "name": "Jump Rope",
+                "category": "Cardio",
+                "movement_type": "Cardio",
+                "workout_date": "2026-06-01",
+                "sets": [{"duration_seconds": 600, "distance_miles": 0.5, "rpe": 7}],
+            },
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(cardio_response.status_code, 200)
+        cardio = cardio_response.get_json()["exercise"]
+        self.assertEqual(cardio["movement_type"], "Cardio")
+        self.assertEqual(cardio["completed_sets"], 1)
+        self.assertEqual(cardio["total_volume"], 0)
+        self.assertEqual(cardio["total_duration_seconds"], 600)
+        self.assertEqual(cardio["total_distance_miles"], 0.5)
+
+        stretch_response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={
+                "name": "Hamstring Stretch",
+                "category": "Hamstrings",
+                "movement_type": "Stretching",
+                "workout_date": "2026-06-01",
+                "sets": [{"duration_seconds": 45, "side": "Left", "rpe": 3}],
+            },
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(stretch_response.status_code, 200)
+        stretch = stretch_response.get_json()["exercise"]
+        self.assertEqual(stretch["movement_type"], "Stretching")
+        self.assertEqual(stretch["sets"][0]["side"], "Left")
+        self.assertEqual(stretch["completed_sets"], 1)
+        self.assertEqual(stretch["total_duration_seconds"], 45)
+
+        day_response = self.client.get("/api/fitness/day/?date=2026-06-01", headers=self.auth_headers())
+        self.assertEqual(day_response.get_json()["summary"]["sets_completed"], 2)
+        self.assertEqual(day_response.get_json()["summary"]["total_volume"], 0)
 
     def test_exercise_set_limits_are_enforced(self):
         too_many_sets = [{"weight": 100, "reps": 5} for _ in range(41)]

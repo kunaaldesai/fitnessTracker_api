@@ -21,20 +21,27 @@ MAX_SETS_PER_EXERCISE = 40
 MAX_COPY_EXERCISES = 75
 MAX_EXERCISE_WEIGHT_LBS = 2000.0
 MAX_EXERCISE_REPS = 1000
+MAX_EXERCISE_DURATION_SECONDS = 24 * 60 * 60
+MAX_EXERCISE_DISTANCE_MILES = 1000.0
 
 CATEGORY_OPTIONS = [
     "Chest",
     "Back",
-    "Quads",
-    "Hamstrings",
+    "Shoulders",
+    "Traps",
     "Biceps",
     "Triceps",
-    "Shoulders",
+    "Forearms",
     "Abs",
+    "Adductors",
+    "Quads",
+    "Hamstrings",
+    "Glutes",
+    "Calves",
     "Cardio",
 ]
 
-TYPE_OPTIONS = ["Strength", "Cardio"]
+TYPE_OPTIONS = ["Strength", "Cardio", "Stretching"]
 
 MUSCLE_SPLIT_METRIC_OPTIONS = [
     {"key": "total_sets", "label": "Total Sets", "unit": "sets"},
@@ -62,9 +69,20 @@ CATEGORY_ALIAS_MAP = {
     "shoulder": "Shoulders",
     "shoulders": "Shoulders",
     "delts": "Shoulders",
+    "trap": "Traps",
+    "traps": "Traps",
+    "forearm": "Forearms",
+    "forearms": "Forearms",
     "ab": "Abs",
     "abs": "Abs",
     "core": "Abs",
+    "adductor": "Adductors",
+    "adductors": "Adductors",
+    "inner thigh": "Adductors",
+    "glute": "Glutes",
+    "glutes": "Glutes",
+    "calf": "Calves",
+    "calves": "Calves",
     "cardio": "Cardio",
     "conditioning": "Cardio",
 }
@@ -75,47 +93,276 @@ TYPE_ALIAS_MAP = {
     "isolation": "Strength",
     "cardio": "Cardio",
     "conditioning": "Cardio",
+    "stretch": "Stretching",
+    "stretching": "Stretching",
+    "mobility": "Stretching",
+    "yoga": "Stretching",
 }
 
 DEFAULT_EXERCISE_LIBRARY: list[dict[str, str]] = [
-    {"name": "Flat Dumbbell Bench Press", "category": "Chest", "movement_type": "Strength"},
-    {"name": "Incline Dumbbell Bench Press", "category": "Chest", "movement_type": "Strength"},
-    {"name": "Neutral Grip Pull Up", "category": "Back", "movement_type": "Strength"},
-    {"name": "Chin Up", "category": "Back", "movement_type": "Strength"},
-    {"name": "Pull Up", "category": "Back", "movement_type": "Strength"},
-    {"name": "Dumbbell Row", "category": "Back", "movement_type": "Strength"},
-    {"name": "Barbell Row", "category": "Back", "movement_type": "Strength"},
-    {"name": "Lat Pulldown", "category": "Back", "movement_type": "Strength"},
-    {"name": "Flat Bench Press", "category": "Chest", "movement_type": "Strength"},
-    {"name": "Incline Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Ab Wheel Rollout", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Alternating Dumbbell Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Arnold Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Assisted Dip", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Assisted Pull Up", "category": "Back", "movement_type": "Strength"},
+    {"name": "Back Extension", "category": "Back", "movement_type": "Strength"},
     {"name": "Barbell Back Squat", "category": "Quads", "movement_type": "Strength"},
-    {"name": "Romanian Deadlift", "category": "Hamstrings", "movement_type": "Strength"},
-    {"name": "Leg Press", "category": "Quads", "movement_type": "Strength"},
-    {"name": "Conventional Deadlift", "category": "Back", "movement_type": "Strength"},
-    {"name": "Sumo Deadlift", "category": "Back", "movement_type": "Strength"},
-    {"name": "Overhead Press", "category": "Shoulders", "movement_type": "Strength"},
-    {"name": "Seated Dumbbell Shoulder Press", "category": "Shoulders", "movement_type": "Strength"},
-    {"name": "Lateral Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Barbell Bench Press", "category": "Chest", "movement_type": "Strength"},
     {"name": "Barbell Curl", "category": "Biceps", "movement_type": "Strength"},
-    {"name": "Dumbbell Curl", "category": "Biceps", "movement_type": "Strength"},
-    {"name": "Hammer Curl", "category": "Biceps", "movement_type": "Strength"},
-    {"name": "Tricep Pushdown", "category": "Triceps", "movement_type": "Strength"},
-    {"name": "Skull Crusher", "category": "Triceps", "movement_type": "Strength"},
-    {"name": "Walking Lunge", "category": "Quads", "movement_type": "Strength"},
-    {"name": "Leg Extension", "category": "Quads", "movement_type": "Strength"},
-    {"name": "Leg Curl", "category": "Hamstrings", "movement_type": "Strength"},
-    {"name": "Hip Thrust", "category": "Hamstrings", "movement_type": "Strength"},
-    {"name": "Standing Calf Raise", "category": "Quads", "movement_type": "Strength"},
-    {"name": "Plank", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Barbell Glute Bridge", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Barbell Hip Thrust", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Barbell Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Barbell Shrug", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Bayesian Cable Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Behind Back Wrist Curl", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Bench Dip", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Banded Lateral Walk", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Bicycle Crunch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Bulgarian Split Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Cable Curl", "category": "Biceps", "movement_type": "Strength"},
     {"name": "Cable Crunch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Cable Fly", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Cable Hip Abduction", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Cable Hip Adduction", "category": "Adductors", "movement_type": "Strength"},
+    {"name": "Cable Lateral Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Cable Pull Through", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Cable Y Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Captain's Chair Knee Raise", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Chest Dip", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Chest Supported Dumbbell Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Chest Supported Machine Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Chin Up", "category": "Back", "movement_type": "Strength"},
+    {"name": "Clamshell", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Close Grip Bench Press", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Close Grip Lat Pulldown", "category": "Back", "movement_type": "Strength"},
+    {"name": "Concentration Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Conventional Deadlift", "category": "Back", "movement_type": "Strength"},
+    {"name": "Copenhagen Plank", "category": "Adductors", "movement_type": "Strength"},
+    {"name": "Crunch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Dead Bug", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Dead Hang", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Decline Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Deficit Push Up", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Diamond Push Up", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Donkey Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Dumbbell Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Dumbbell Fly", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Dumbbell Glute Bridge", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Dumbbell Pullover", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Dumbbell Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Dumbbell Shoulder Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Dumbbell Shrug", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Dumbbell Y Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "EZ Bar Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "EZ Bar Skull Crusher", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Face Pull", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Farmer Carry", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Flat Dumbbell Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Floor Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Forward Lunge", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Front Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Front Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Frog Pump", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Glute Ham Raise", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Goblet Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Good Morning", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Gripper Squeeze", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Hack Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Hammer Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Hanging Knee Raise", "category": "Abs", "movement_type": "Strength"},
     {"name": "Hanging Leg Raise", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Heavy Farmer Carry", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "High Bar Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Hip Abduction Machine", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Hip Adduction Machine", "category": "Adductors", "movement_type": "Strength"},
+    {"name": "Hip Thrust", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Hollow Body Hold", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Incline Barbell Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Incline Dumbbell Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Incline Dumbbell Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Incline Push Up", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Inverted Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "JM Press", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Landmine Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Lateral Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Lat Pulldown", "category": "Back", "movement_type": "Strength"},
+    {"name": "Lean Back Cable Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Leaning Cable Lateral Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Leg Curl", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Leg Extension", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Leg Press", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Leg Press Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Low Bar Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Low Cable Fly", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Lying Leg Curl", "category": "Hamstrings", "movement_type": "Strength"},
     {"name": "Machine Chest Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Machine Crunch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Machine Glute Kickback", "category": "Glutes", "movement_type": "Strength"},
+    {"name": "Machine Hack Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Machine Preacher Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Machine Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Machine Shoulder Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Machine Shrug", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Meadows Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Mountain Climber", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Neutral Grip Pull Up", "category": "Back", "movement_type": "Strength"},
+    {"name": "Nordic Hamstring Curl", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Overhead Cable Tricep Extension", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Overhead Dumbbell Tricep Extension", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Overhead Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Pallof Press", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Pec Deck", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Pendlay Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Pistol Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Plate Front Raise", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Plate Pinch", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Plank", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Preacher Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Pronation Supination", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Pull Up", "category": "Back", "movement_type": "Strength"},
+    {"name": "Push Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Push Up", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Rack Pull", "category": "Back", "movement_type": "Strength"},
+    {"name": "Rear Delt Fly", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Reverse Crunch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Reverse Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Reverse Lunge", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Reverse Pec Deck", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Reverse Wrist Curl", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Romanian Deadlift", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Rope Tricep Pushdown", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Russian Twist", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Seated Barbell Shoulder Press", "category": "Shoulders", "movement_type": "Strength"},
     {"name": "Seated Cable Row", "category": "Back", "movement_type": "Strength"},
-    {"name": "Treadmill Run", "category": "Cardio", "movement_type": "Cardio"},
-    {"name": "Stationary Bike", "category": "Cardio", "movement_type": "Cardio"},
-    {"name": "Rowing Machine", "category": "Cardio", "movement_type": "Cardio"},
-    {"name": "Stair Climber", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Seated Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Seated Dumbbell Shoulder Press", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "Seated Leg Curl", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Side Plank", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Single Arm Cable Tricep Extension", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Single Arm Lat Pulldown", "category": "Back", "movement_type": "Strength"},
+    {"name": "Single Leg Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Single Leg Press", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Single Leg Romanian Deadlift", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Sit Up", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Sissy Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Skull Crusher", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Slider Leg Curl", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Smith Machine Bench Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Smith Machine Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Smith Machine Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Spider Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Split Squat", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Standing Calf Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Step Up", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Stiff Leg Deadlift", "category": "Hamstrings", "movement_type": "Strength"},
+    {"name": "Straight Arm Pulldown", "category": "Back", "movement_type": "Strength"},
+    {"name": "Suitcase Carry", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Sumo Deadlift", "category": "Back", "movement_type": "Strength"},
+    {"name": "Sumo Squat", "category": "Adductors", "movement_type": "Strength"},
+    {"name": "Superman", "category": "Back", "movement_type": "Strength"},
+    {"name": "Svend Press", "category": "Chest", "movement_type": "Strength"},
+    {"name": "T-Bar Row", "category": "Back", "movement_type": "Strength"},
+    {"name": "Tibialis Raise", "category": "Calves", "movement_type": "Strength"},
+    {"name": "Toe Touch", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Trap Bar Shrug", "category": "Traps", "movement_type": "Strength"},
+    {"name": "Tricep Kickback", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Tricep Pushdown", "category": "Triceps", "movement_type": "Strength"},
+    {"name": "Towel Hang", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Upright Row", "category": "Shoulders", "movement_type": "Strength"},
+    {"name": "V Up", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Wall Sit", "category": "Quads", "movement_type": "Strength"},
+    {"name": "Weighted Dip", "category": "Chest", "movement_type": "Strength"},
+    {"name": "Wide Grip Lat Pulldown", "category": "Back", "movement_type": "Strength"},
+    {"name": "Wood Chop", "category": "Abs", "movement_type": "Strength"},
+    {"name": "Wrist Curl", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Wrist Roller", "category": "Forearms", "movement_type": "Strength"},
+    {"name": "Zottman Curl", "category": "Biceps", "movement_type": "Strength"},
+    {"name": "Agility Ladder", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Assault Bike", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Battle Ropes", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Boxing", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Burpee", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Dance Cardio", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Elliptical", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Heavy Bag", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "High Knees", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Hiking", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Incline Treadmill Walk", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Interval Run", "category": "Cardio", "movement_type": "Cardio"},
     {"name": "Jump Rope", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Jumping Jacks", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Kickboxing", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Lap Swim", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Outdoor Cycling", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Outdoor Run", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Outdoor Walk", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Recumbent Bike", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Rowing Machine", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Shadow Boxing", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "SkiErg", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Sled Pull", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Sled Push", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Spin Bike", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Stair Climber", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Stairmaster", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Stationary Bike", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "StepMill", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Swimming", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Trail Run", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Treadmill Run", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Treadmill Walk", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Water Jogging", "category": "Cardio", "movement_type": "Cardio"},
+    {"name": "Achilles Stretch", "category": "Calves", "movement_type": "Stretching"},
+    {"name": "Biceps Wall Stretch", "category": "Biceps", "movement_type": "Stretching"},
+    {"name": "Butterfly Stretch", "category": "Adductors", "movement_type": "Stretching"},
+    {"name": "Calf Stretch", "category": "Calves", "movement_type": "Stretching"},
+    {"name": "Cat Cow", "category": "Back", "movement_type": "Stretching"},
+    {"name": "Chest Stretch", "category": "Chest", "movement_type": "Stretching"},
+    {"name": "Child's Pose", "category": "Back", "movement_type": "Stretching"},
+    {"name": "Cobra Stretch", "category": "Abs", "movement_type": "Stretching"},
+    {"name": "Cossack Squat Stretch", "category": "Adductors", "movement_type": "Stretching"},
+    {"name": "Couch Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "Cross Body Shoulder Stretch", "category": "Shoulders", "movement_type": "Stretching"},
+    {"name": "Cross Body Tricep Stretch", "category": "Triceps", "movement_type": "Stretching"},
+    {"name": "Doorway Pec Stretch", "category": "Chest", "movement_type": "Stretching"},
+    {"name": "Doorway Shoulder Stretch", "category": "Shoulders", "movement_type": "Stretching"},
+    {"name": "Downward Dog", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Downward Dog Calf Pedal", "category": "Calves", "movement_type": "Stretching"},
+    {"name": "Figure Four Stretch", "category": "Glutes", "movement_type": "Stretching"},
+    {"name": "Frog Stretch", "category": "Adductors", "movement_type": "Stretching"},
+    {"name": "Hamstring Stretch", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Hip Flexor Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "Knee to Chest Stretch", "category": "Glutes", "movement_type": "Stretching"},
+    {"name": "Kneeling Quad Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "Lat Stretch", "category": "Back", "movement_type": "Stretching"},
+    {"name": "Levator Scapulae Stretch", "category": "Traps", "movement_type": "Stretching"},
+    {"name": "Lizard Pose", "category": "Glutes", "movement_type": "Stretching"},
+    {"name": "Low Lunge Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "Overhead Tricep Stretch", "category": "Triceps", "movement_type": "Stretching"},
+    {"name": "Pigeon Pose", "category": "Glutes", "movement_type": "Stretching"},
+    {"name": "Prayer Stretch", "category": "Forearms", "movement_type": "Stretching"},
+    {"name": "Seated Forward Fold", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Seated Hamstring Stretch", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Seated Piriformis Stretch", "category": "Glutes", "movement_type": "Stretching"},
+    {"name": "Seated Straddle Stretch", "category": "Adductors", "movement_type": "Stretching"},
+    {"name": "Side Lunge Stretch", "category": "Adductors", "movement_type": "Stretching"},
+    {"name": "Single Leg Forward Fold", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Sleeper Stretch", "category": "Shoulders", "movement_type": "Stretching"},
+    {"name": "Soleus Stretch", "category": "Calves", "movement_type": "Stretching"},
+    {"name": "Sphinx Pose", "category": "Abs", "movement_type": "Stretching"},
+    {"name": "Standing Hamstring Stretch", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Standing Quad Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "Supine Hamstring Stretch", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Thread the Needle", "category": "Back", "movement_type": "Stretching"},
+    {"name": "Toe Touch Stretch", "category": "Hamstrings", "movement_type": "Stretching"},
+    {"name": "Upper Trap Stretch", "category": "Traps", "movement_type": "Stretching"},
+    {"name": "Upward Dog", "category": "Abs", "movement_type": "Stretching"},
+    {"name": "Wall Calf Stretch", "category": "Calves", "movement_type": "Stretching"},
+    {"name": "Wall Chest Stretch", "category": "Chest", "movement_type": "Stretching"},
+    {"name": "Wrist Extensor Stretch", "category": "Forearms", "movement_type": "Stretching"},
+    {"name": "Wrist Flexor Stretch", "category": "Forearms", "movement_type": "Stretching"},
+    {"name": "World's Greatest Stretch", "category": "Quads", "movement_type": "Stretching"},
+    {"name": "90/90 Hip Stretch", "category": "Glutes", "movement_type": "Stretching"},
 ]
 
 
@@ -263,6 +510,22 @@ def _coalesce_exercise_metadata(*, name: str, category: Any, movement_type: Any)
     return normalized_category, normalized_type
 
 
+def _movement_key(value: Any) -> str:
+    return _normalize_movement_type(value).casefold() or "strength"
+
+
+def _is_strength_movement(value: Any) -> bool:
+    return _movement_key(value) == "strength"
+
+
+def _is_cardio_movement(value: Any) -> bool:
+    return _movement_key(value) == "cardio"
+
+
+def _is_stretching_movement(value: Any) -> bool:
+    return _movement_key(value) == "stretching"
+
+
 def _normalize_sets(raw_sets: Any, *, validate: bool = False) -> list[dict[str, Any]]:
     if not isinstance(raw_sets, list):
         raw_sets = []
@@ -283,14 +546,25 @@ def _normalize_sets(raw_sets: Any, *, validate: bool = False) -> list[dict[str, 
         rpe = _safe_float(raw_set.get("rpe"))
         if rpe is not None:
             rpe = max(0.0, min(10.0, rpe))
+        duration_seconds = _safe_float(raw_set.get("duration_seconds"))
+        if duration_seconds is None and _safe_float(raw_set.get("duration_minutes")) is not None:
+            duration_seconds = (_safe_float(raw_set.get("duration_minutes")) or 0.0) * 60.0
+        if validate and duration_seconds is not None and duration_seconds > MAX_EXERCISE_DURATION_SECONDS:
+            raise ValueError("Set duration must be at most 24 hours.")
+        distance_miles = _safe_float(raw_set.get("distance_miles"))
+        if validate and distance_miles is not None and distance_miles > MAX_EXERCISE_DISTANCE_MILES:
+            raise ValueError(f"Set distance must be at most {MAX_EXERCISE_DISTANCE_MILES:g} miles.")
         normalized.append(
             {
                 "weight": min(weight, MAX_EXERCISE_WEIGHT_LBS) if weight is not None else None,
                 "reps": min(reps, MAX_EXERCISE_REPS) if reps is not None else None,
                 "rpe": rpe,
+                "duration_seconds": min(duration_seconds, MAX_EXERCISE_DURATION_SECONDS) if duration_seconds is not None else None,
+                "distance_miles": min(distance_miles, MAX_EXERCISE_DISTANCE_MILES) if distance_miles is not None else None,
+                "side": _normalize_text(raw_set.get("side"), max_len=40),
             }
         )
-    return normalized or [{"weight": None, "reps": None, "rpe": None}]
+    return normalized or [{"weight": None, "reps": None, "rpe": None, "duration_seconds": None, "distance_miles": None, "side": ""}]
 
 
 def _set_volume(weight: float | None, reps: int | None) -> float:
@@ -305,37 +579,68 @@ def _set_calculated_one_rm(weight: float | None, reps: int | None) -> float:
     return max(0.0, float(weight) * (1.0 + (float(reps) / 30.0)))
 
 
+def _set_duration_seconds(set_row: dict[str, Any]) -> float:
+    return _safe_float(set_row.get("duration_seconds")) or 0.0
+
+
+def _set_distance_miles(set_row: dict[str, Any]) -> float:
+    return _safe_float(set_row.get("distance_miles")) or 0.0
+
+
+def _set_is_complete(set_row: dict[str, Any], movement_type: Any) -> bool:
+    if _is_strength_movement(movement_type):
+        return _set_volume(_safe_float(set_row.get("weight")), _safe_int(set_row.get("reps"))) > 0
+    if _is_cardio_movement(movement_type):
+        return _set_duration_seconds(set_row) > 0 or _set_distance_miles(set_row) > 0
+    if _is_stretching_movement(movement_type):
+        return _set_duration_seconds(set_row) > 0
+    return (
+        _set_volume(_safe_float(set_row.get("weight")), _safe_int(set_row.get("reps"))) > 0
+        or _set_duration_seconds(set_row) > 0
+        or _set_distance_miles(set_row) > 0
+    )
+
+
 def _serialize_exercise(exercise_id: str, data: dict[str, Any]) -> dict[str, Any]:
     serialized_sets: list[dict[str, Any]] = []
     total_volume = 0.0
+    total_duration_seconds = 0.0
+    total_distance_miles = 0.0
     completed_sets = 0
-    for index, item in enumerate(_normalize_sets(data.get("sets"))):
-        weight = _safe_float(item.get("weight"))
-        reps = _safe_int(item.get("reps"))
-        rpe = _safe_float(item.get("rpe"))
-        if rpe is not None:
-            rpe = max(0.0, min(10.0, rpe))
-        volume = _set_volume(weight, reps)
-        if volume > 0:
-            completed_sets += 1
-        total_volume += volume
-        serialized_sets.append(
-            {
-                "set_number": index + 1,
-                "weight": weight,
-                "reps": reps,
-                "rpe": rpe,
-                "volume": round(volume, 2),
-                "one_rm": round(_set_calculated_one_rm(weight, reps), 2),
-            }
-        )
-
     name = _normalize_text(data.get("name"), max_len=160)
     category, movement_type = _coalesce_exercise_metadata(
         name=name,
         category=data.get("category"),
         movement_type=data.get("movement_type"),
     )
+    for index, item in enumerate(_normalize_sets(data.get("sets"))):
+        weight = _safe_float(item.get("weight"))
+        reps = _safe_int(item.get("reps"))
+        rpe = _safe_float(item.get("rpe"))
+        if rpe is not None:
+            rpe = max(0.0, min(10.0, rpe))
+        duration_seconds = _set_duration_seconds(item)
+        distance_miles = _set_distance_miles(item)
+        volume = _set_volume(weight, reps) if _is_strength_movement(movement_type) else 0.0
+        if _set_is_complete(item, movement_type):
+            completed_sets += 1
+        total_volume += volume
+        total_duration_seconds += duration_seconds
+        total_distance_miles += distance_miles
+        serialized_sets.append(
+            {
+                "set_number": index + 1,
+                "weight": weight,
+                "reps": reps,
+                "rpe": rpe,
+                "duration_seconds": round(duration_seconds, 2) if duration_seconds > 0 else None,
+                "distance_miles": round(distance_miles, 3) if distance_miles > 0 else None,
+                "side": _normalize_text(item.get("side"), max_len=40),
+                "volume": round(volume, 2),
+                "one_rm": round(_set_calculated_one_rm(weight, reps), 2),
+            }
+        )
+
     return {
         "id": exercise_id,
         "owner_uuid": _string(data.get("owner_uuid")),
@@ -348,6 +653,8 @@ def _serialize_exercise(exercise_id: str, data: dict[str, Any]) -> dict[str, Any
         "notes": _normalize_notes(data.get("notes"), max_len=5000),
         "sets": serialized_sets,
         "total_volume": round(total_volume, 2),
+        "total_duration_seconds": round(total_duration_seconds, 2),
+        "total_distance_miles": round(total_distance_miles, 3),
         "completed_sets": completed_sets,
         "created_at_iso": _string(data.get("created_at_iso")),
         "updated_at_iso": _string(data.get("updated_at_iso")),
@@ -620,26 +927,44 @@ def resolve_analytics_range(*, range_key: Any = None, start_date: Any = None, en
 
 def _exercise_metrics(exercise: dict[str, Any]) -> dict[str, Any]:
     total_volume = 0.0
+    total_duration_seconds = 0.0
+    total_distance_miles = 0.0
     completed_sets = 0
     max_weight = 0.0
     max_one_rm = 0.0
-    best_set = {"weight": None, "reps": None, "rpe": None, "volume": 0.0, "one_rm": 0.0}
+    movement_type = exercise.get("movement_type") or exercise.get("type") or "Strength"
+    best_set = {"weight": None, "reps": None, "rpe": None, "duration_seconds": None, "distance_miles": None, "side": "", "volume": 0.0, "one_rm": 0.0}
     for set_row in exercise.get("sets") or []:
         weight = _safe_float(set_row.get("weight"))
         reps = _safe_int(set_row.get("reps"))
         rpe = _safe_float(set_row.get("rpe"))
-        volume = _set_volume(weight, reps)
+        duration_seconds = _set_duration_seconds(set_row)
+        distance_miles = _set_distance_miles(set_row)
+        volume = _set_volume(weight, reps) if _is_strength_movement(movement_type) else 0.0
         one_rm = _set_calculated_one_rm(weight, reps)
-        if volume > 0:
+        if _set_is_complete(set_row, movement_type):
             completed_sets += 1
-            total_volume += volume
-        if weight is not None:
+        total_volume += volume
+        total_duration_seconds += duration_seconds
+        total_distance_miles += distance_miles
+        if _is_strength_movement(movement_type) and weight is not None:
             max_weight = max(max_weight, float(weight))
-        if one_rm > max_one_rm:
+        if _is_strength_movement(movement_type) and one_rm > max_one_rm:
             max_one_rm = one_rm
-            best_set = {"weight": weight, "reps": reps, "rpe": rpe, "volume": round(volume, 2), "one_rm": round(one_rm, 2)}
+            best_set = {
+                "weight": weight,
+                "reps": reps,
+                "rpe": rpe,
+                "duration_seconds": round(duration_seconds, 2) if duration_seconds > 0 else None,
+                "distance_miles": round(distance_miles, 3) if distance_miles > 0 else None,
+                "side": _normalize_text(set_row.get("side"), max_len=40),
+                "volume": round(volume, 2),
+                "one_rm": round(one_rm, 2),
+            }
     return {
         "total_volume": round(total_volume, 2),
+        "total_duration_seconds": round(total_duration_seconds, 2),
+        "total_distance_miles": round(total_distance_miles, 3),
         "completed_sets": completed_sets,
         "max_weight": round(max_weight, 2),
         "max_one_rm": round(max_one_rm, 2),
@@ -679,7 +1004,56 @@ def _best_set_label(best_set: dict[str, Any] | None) -> str:
         return f"{round(weight, 2):g} lbs x {int(reps)}"
     if reps is not None and reps > 0:
         return f"{int(reps)} reps"
+    duration_seconds = _set_duration_seconds(best_set)
+    distance_miles = _set_distance_miles(best_set)
+    parts = []
+    if duration_seconds > 0:
+        if duration_seconds < 60:
+            parts.append(f"{duration_seconds:g} sec")
+        else:
+            parts.append(f"{duration_seconds / 60:g} min")
+    if distance_miles > 0:
+        parts.append(f"{distance_miles:g} mi")
+    side = _normalize_text(best_set.get("side"), max_len=40)
+    if side:
+        parts.append(side)
+    if parts:
+        return " ".join(parts)
     return "-"
+
+
+def _set_summary_label(set_row: dict[str, Any], movement_type: Any) -> str:
+    if _is_cardio_movement(movement_type):
+        parts = []
+        duration_seconds = _set_duration_seconds(set_row)
+        distance_miles = _set_distance_miles(set_row)
+        if duration_seconds > 0:
+            parts.append(f"{duration_seconds / 60:g} min" if duration_seconds >= 60 else f"{duration_seconds:g} sec")
+        if distance_miles > 0:
+            parts.append(f"{distance_miles:g} mi")
+        rpe = _safe_float(set_row.get("rpe"))
+        if rpe is not None:
+            parts.append(f"RPE {rpe:g}")
+        return " ".join(parts)
+    if _is_stretching_movement(movement_type):
+        parts = []
+        duration_seconds = _set_duration_seconds(set_row)
+        if duration_seconds > 0:
+            parts.append(f"{duration_seconds / 60:g} min" if duration_seconds >= 60 else f"{duration_seconds:g} sec")
+        side = _normalize_text(set_row.get("side"), max_len=40)
+        if side:
+            parts.append(side)
+        rpe = _safe_float(set_row.get("rpe"))
+        if rpe is not None:
+            parts.append(f"RPE {rpe:g}")
+        return " ".join(parts)
+    weight = _safe_float(set_row.get("weight"))
+    reps = _safe_int(set_row.get("reps"))
+    if weight is not None and reps is not None and reps > 0:
+        return f"{weight:g}x{reps}"
+    if reps is not None and reps > 0:
+        return f"{reps} reps"
+    return ""
 
 
 def _aggregate_records(exercises: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1038,14 +1412,9 @@ def _get_last_sessions_before(db, *, owner_uuid: str, before_date_iso: str, exer
         if not sessions:
             continue
         latest = max(sessions, key=lambda item: _string(item.get("workout_date")))
-        parts = []
-        for set_row in latest.get("sets") or []:
-            weight = _safe_float(set_row.get("weight"))
-            reps = _safe_int(set_row.get("reps"))
-            if weight is not None and reps is not None and reps > 0:
-                parts.append(f"{weight:g}x{reps}")
-            elif reps is not None and reps > 0:
-                parts.append(f"{reps} reps")
+        movement_type = latest.get("movement_type") or latest.get("type") or "Strength"
+        parts = [_set_summary_label(set_row, movement_type) for set_row in latest.get("sets") or []]
+        parts = [part for part in parts if part]
         result[name] = {"date": _string(latest.get("workout_date")), "date_label": _format_date_short(_string(latest.get("workout_date"))), "sets_summary": parts}
     return result
 
@@ -1119,7 +1488,17 @@ def copy_exercises_from_date_payload(db, *, auth_user: dict[str, Any], payload: 
         raise ValueError("Cannot copy an exercise onto the same date.")
     created = []
     for ex in source_exercises:
-        raw_sets = [{"weight": _safe_float(s.get("weight")), "reps": _safe_int(s.get("reps")), "rpe": _safe_float(s.get("rpe"))} for s in (ex.get("sets") or [])]
+        raw_sets = [
+            {
+                "weight": _safe_float(s.get("weight")),
+                "reps": _safe_int(s.get("reps")),
+                "rpe": _safe_float(s.get("rpe")),
+                "duration_seconds": _safe_float(s.get("duration_seconds")),
+                "distance_miles": _safe_float(s.get("distance_miles")),
+                "side": _normalize_text(s.get("side"), max_len=40),
+            }
+            for s in (ex.get("sets") or [])
+        ]
         created.append(
             create_exercise(
                 db,
