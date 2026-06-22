@@ -7,6 +7,10 @@
       "ignore": [
         "venv",
         ".git",
+        ".DS_Store",
+        "__pycache__",
+        "**/__pycache__/**",
+        "*.pyc",
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"

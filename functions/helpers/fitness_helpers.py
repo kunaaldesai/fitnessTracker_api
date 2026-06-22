@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -15,6 +16,11 @@ except Exception:  # pragma: no cover
 
 FITNESS_EXERCISES_COLLECTION = "fitness_exercises"
 _WRITE_BATCH_LIMIT = 400
+MAX_CALENDAR_DAYS = 731
+MAX_SETS_PER_EXERCISE = 40
+MAX_COPY_EXERCISES = 75
+MAX_EXERCISE_WEIGHT_LBS = 2000.0
+MAX_EXERCISE_REPS = 1000
 
 CATEGORY_OPTIONS = [
     "Chest",
@@ -153,6 +159,8 @@ def _safe_float(value: Any) -> float | None:
         parsed = float(raw)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(parsed):
+        return None
     return max(0.0, parsed)
 
 
@@ -161,8 +169,11 @@ def _safe_int(value: Any) -> int | None:
     if not raw:
         return None
     try:
-        parsed = int(float(raw))
-    except (TypeError, ValueError):
+        parsed_float = float(raw)
+        if not math.isfinite(parsed_float):
+            return None
+        parsed = int(parsed_float)
+    except (OverflowError, TypeError, ValueError):
         return None
     return max(0, parsed)
 
@@ -252,20 +263,30 @@ def _coalesce_exercise_metadata(*, name: str, category: Any, movement_type: Any)
     return normalized_category, normalized_type
 
 
-def _normalize_sets(raw_sets: Any) -> list[dict[str, Any]]:
+def _normalize_sets(raw_sets: Any, *, validate: bool = False) -> list[dict[str, Any]]:
     if not isinstance(raw_sets, list):
         raw_sets = []
+    if len(raw_sets) > MAX_SETS_PER_EXERCISE:
+        if validate:
+            raise ValueError(f"Exercises can include at most {MAX_SETS_PER_EXERCISE} sets.")
+        raw_sets = raw_sets[:MAX_SETS_PER_EXERCISE]
     normalized: list[dict[str, Any]] = []
     for raw_set in raw_sets:
         if not isinstance(raw_set, dict):
             continue
+        weight = _safe_float(raw_set.get("weight"))
+        reps = _safe_int(raw_set.get("reps"))
+        if validate and weight is not None and weight > MAX_EXERCISE_WEIGHT_LBS:
+            raise ValueError(f"Set weight must be at most {MAX_EXERCISE_WEIGHT_LBS:g} lbs.")
+        if validate and reps is not None and reps > MAX_EXERCISE_REPS:
+            raise ValueError(f"Set reps must be at most {MAX_EXERCISE_REPS}.")
         rpe = _safe_float(raw_set.get("rpe"))
         if rpe is not None:
             rpe = max(0.0, min(10.0, rpe))
         normalized.append(
             {
-                "weight": _safe_float(raw_set.get("weight")),
-                "reps": _safe_int(raw_set.get("reps")),
+                "weight": min(weight, MAX_EXERCISE_WEIGHT_LBS) if weight is not None else None,
+                "reps": min(reps, MAX_EXERCISE_REPS) if reps is not None else None,
                 "rpe": rpe,
             }
         )
@@ -405,7 +426,7 @@ def create_exercise(db, *, owner_uuid: str, payload: dict[str, Any]) -> dict[str
         "category": category,
         "movement_type": movement_type,
         "notes": _normalize_notes(payload.get("notes"), max_len=5000),
-        "sets": _normalize_sets(payload.get("sets")),
+        "sets": _normalize_sets(payload.get("sets"), validate=True),
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP,
         "created_at_iso": now_iso,
@@ -438,7 +459,7 @@ def update_exercise(db, *, owner_uuid: str, exercise_id: str, payload: dict[str,
     if "notes" in payload:
         updates["notes"] = _normalize_notes(payload.get("notes"), max_len=5000)
     if "sets" in payload:
-        updates["sets"] = _normalize_sets(payload.get("sets"))
+        updates["sets"] = _normalize_sets(payload.get("sets"), validate=True)
     if "workout_date" in payload:
         workout_date_iso = resolve_workout_date(payload.get("workout_date")).isoformat()
         updates["workout_date"] = workout_date_iso
@@ -1072,12 +1093,16 @@ def copy_exercises_from_date_payload(db, *, auth_user: dict[str, Any], payload: 
     if raw_ids is not None:
         if not isinstance(raw_ids, list):
             raise ValueError("exercise_ids must be a list.")
+        if len(raw_ids) > MAX_COPY_EXERCISES:
+            raise ValueError(f"You can copy at most {MAX_COPY_EXERCISES} exercises at once.")
         seen_ids: set[str] = set()
         for raw_id in raw_ids:
             exercise_id = _string(raw_id)
             if not exercise_id or exercise_id in seen_ids:
                 continue
             seen_ids.add(exercise_id)
+            if len(seen_ids) > MAX_COPY_EXERCISES:
+                raise ValueError(f"You can copy at most {MAX_COPY_EXERCISES} exercises at once.")
             snap = _exercise_snapshot_for_owner(db, owner_uuid=owner_uuid, exercise_id=exercise_id)
             source_exercises.append(_serialize_exercise(snap.id, snap.to_dict() or {}))
     else:
@@ -1088,6 +1113,8 @@ def copy_exercises_from_date_payload(db, *, auth_user: dict[str, Any], payload: 
             raise ValueError("Cannot copy a workout onto the same date.")
         source_exercises = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=source_date.isoformat())
 
+    if len(source_exercises) > MAX_COPY_EXERCISES:
+        raise ValueError(f"You can copy at most {MAX_COPY_EXERCISES} exercises at once.")
     if any(_string(ex.get("workout_date")) == target_date_iso for ex in source_exercises):
         raise ValueError("Cannot copy an exercise onto the same date.")
     created = []
@@ -1174,6 +1201,10 @@ def build_workout_calendar_payload(db, *, auth_user: dict[str, Any], range_key: 
     if start is None:
         workout_dates = [parsed for iso in by_date if (parsed := _parse_iso_date(iso)) is not None]
         start = min(workout_dates) if workout_dates else end
+    if (end - start).days + 1 > MAX_CALENDAR_DAYS:
+        if _string(range_payload.get("key")) == "custom":
+            raise ValueError(f"Workout calendar range cannot exceed {MAX_CALENDAR_DAYS} days.")
+        start = end - timedelta(days=MAX_CALENDAR_DAYS - 1)
     grid_start = start - timedelta(days=start.weekday())
     max_volume = max(by_date.values()) if by_date else 1.0
     weeks: list[list[dict[str, Any]]] = []

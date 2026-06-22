@@ -1,7 +1,7 @@
 import importlib
 import logging
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from utils import InMemoryFirestore, ensure_functions_on_path, install_fake_firebase
 
@@ -9,6 +9,10 @@ ensure_functions_on_path()
 _, fake_auth = install_fake_firebase(InMemoryFirestore())
 
 fitness_routes = importlib.import_module("routes.fitness")
+
+
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
 
 
 class FitnessApiTestCase(unittest.TestCase):
@@ -89,6 +93,16 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Height in feet", response.get_json()["error"])
 
+    def test_profile_rejects_non_finite_numbers(self):
+        response = self.client.post(
+            "/api/fitness/profile/",
+            json={"weight_lbs": "NaN"},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid weight", response.get_json()["error"])
+
     def test_profile_goal_validation_error(self):
         response = self.client.post(
             "/api/fitness/profile/",
@@ -109,7 +123,7 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertIn("Custom goal", response.get_json()["error"])
 
     def test_weight_history_creates_baseline_once_from_existing_profile_weight(self):
-        today = date.today().isoformat()
+        today = utc_today().isoformat()
         self.db.seed(
             "users",
             "user-1",
@@ -253,7 +267,7 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertIsNotNone(data["goal"]["estimated_goal_date"])
 
     def test_weight_history_rejects_future_and_invalid_weights(self):
-        future = (date.today() + timedelta(days=1)).isoformat()
+        future = (utc_today() + timedelta(days=1)).isoformat()
 
         response = self.client.post(
             "/api/fitness/profile/weight-history/create/",
@@ -270,6 +284,14 @@ class FitnessApiTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("positive", response.get_json()["error"])
+
+        response = self.client.post(
+            "/api/fitness/profile/weight-history/create/",
+            json={"date": "2026-06-01", "weight_lbs": "Infinity"},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid weight", response.get_json()["error"])
 
         response = self.client.get(
             "/api/fitness/profile/weight-history/?start_date=not-a-date",
@@ -342,6 +364,13 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(calendar_response.status_code, 200)
         self.assertEqual(calendar_response.get_json()["total_workout_days"], 1)
 
+        huge_calendar_response = self.client.get(
+            "/api/fitness/workout-calendar/?start_date=0001-01-01&end_date=9999-12-31",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(huge_calendar_response.status_code, 400)
+        self.assertIn("calendar range", huge_calendar_response.get_json()["error"])
+
         delete_response = self.client.post(
             f"/api/fitness/exercises/{exercise_id}/delete/",
             headers=self.auth_headers(),
@@ -362,6 +391,32 @@ class FitnessApiTestCase(unittest.TestCase):
         names = {row["name"] for row in response.get_json()["exercises"]}
         self.assertIn("Flat Dumbbell Bench Press", names)
         self.assertIn("Custom Press", names)
+
+    def test_exercise_set_limits_are_enforced(self):
+        too_many_sets = [{"weight": 100, "reps": 5} for _ in range(41)]
+        response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Bench Press", "workout_date": "2026-06-01", "sets": too_many_sets},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at most 40 sets", response.get_json()["error"])
+
+        response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Bench Press", "workout_date": "2026-06-01", "sets": [{"weight": 2001, "reps": 5}]},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Set weight", response.get_json()["error"])
+
+        response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Bench Press", "workout_date": "2026-06-01", "sets": [{"weight": 100, "reps": 1001}]},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Set reps", response.get_json()["error"])
 
     def test_reorder_previous_last_sessions_and_copy(self):
         first = self.client.post(
@@ -406,6 +461,14 @@ class FitnessApiTestCase(unittest.TestCase):
         )
         self.assertEqual(last_sessions_response.status_code, 200)
         self.assertIn("Squat", last_sessions_response.get_json()["last_sessions"])
+
+        oversized_copy = self.client.post(
+            "/api/fitness/exercises/copy-from-date/",
+            json={"target_date": "2026-06-03", "exercise_ids": [f"ex-{index}" for index in range(76)]},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(oversized_copy.status_code, 400)
+        self.assertIn("copy at most 75", oversized_copy.get_json()["error"])
 
     def test_ownership_is_enforced(self):
         self.db.seed(

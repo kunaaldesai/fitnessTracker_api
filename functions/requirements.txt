@@ -1,5 +1,5 @@
-firebase-admin
-firebase-functions
-Flask
-google-cloud-firestore
-pytz
+firebase-admin==7.1.0
+firebase-functions==0.5.0
+Flask==3.1.2
+google-cloud-firestore==2.22.0
+pytz==2025.2

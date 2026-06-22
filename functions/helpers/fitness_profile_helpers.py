@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -79,8 +80,11 @@ def _parse_int(value: Any) -> int | None:
     if not raw:
         return None
     try:
-        return int(float(raw))
-    except (TypeError, ValueError):
+        parsed = float(raw)
+        if not math.isfinite(parsed):
+            return None
+        return int(parsed)
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -89,7 +93,10 @@ def _parse_float(value: Any) -> float | None:
     if not raw:
         return None
     try:
-        return float(raw)
+        parsed = float(raw)
+        if not math.isfinite(parsed):
+            return None
+        return parsed
     except (TypeError, ValueError):
         return None
 
