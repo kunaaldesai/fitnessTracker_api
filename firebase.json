@@ -17,6 +17,10 @@
       ]
     }
   ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "hosting": {
     "public": "public",
     "ignore": [
@@ -30,5 +34,12 @@
         "function": "fitness"
       }
     ]
+  },
+  "extensions": {
+    "bq-workout-days": "firebase/firestore-bigquery-export@0.3.2",
+    "bq-exercise-entries": "firebase/firestore-bigquery-export@0.3.2",
+    "bq-weight-entries": "firebase/firestore-bigquery-export@0.3.2",
+    "bq-exercise-definitions": "firebase/firestore-bigquery-export@0.3.2",
+    "bq-analytics-events": "firebase/firestore-bigquery-export@0.3.2"
   }
 }

@@ -14,7 +14,14 @@ try:
 except Exception:  # pragma: no cover
     FieldFilter = None
 
+USERS_COLLECTION = "users"
+WORKOUT_DAYS_COLLECTION = "workout_days"
+EXERCISE_ENTRIES_COLLECTION = "exercise_entries"
+EXERCISE_DEFINITIONS_COLLECTION = "exercise_definitions"
+EXERCISE_RECORDS_COLLECTION = "exercise_records"
+EXERCISE_CATALOG_COLLECTION = "exercise_catalog"
 FITNESS_EXERCISES_COLLECTION = "fitness_exercises"
+FIRESTORE_SCHEMA_VERSION = 2
 _WRITE_BATCH_LIMIT = 400
 MAX_CALENDAR_DAYS = 731
 MAX_SETS_PER_EXERCISE = 40
@@ -384,6 +391,19 @@ def _exercise_key(value: Any) -> str:
     return _string(value).casefold()
 
 
+def _doc_key(value: Any) -> str:
+    key = " ".join(_exercise_key(value).replace("/", " ").split())
+    return key[:180] or "unknown"
+
+
+def _category_key(value: Any) -> str:
+    return _doc_key(_normalize_category(value))
+
+
+def _movement_type_key(value: Any) -> str:
+    return _doc_key(_normalize_movement_type(value))
+
+
 def _normalize_text(value: Any, *, max_len: int) -> str:
     text = " ".join(_string(value).split())
     if len(text) > max_len:
@@ -669,40 +689,105 @@ def _owner_uuid_from_user(db, auth_user: dict[str, Any]) -> tuple[dict[str, Any]
     return profile, owner_uuid
 
 
-def _next_order_index(db, *, owner_uuid: str, workout_date_iso: str) -> int:
-    query = db.collection(FITNESS_EXERCISES_COLLECTION)
-    query = _where_eq(query, "owner_uuid", owner_uuid)
-    query = _where_eq(query, "workout_date", workout_date_iso)
-    max_order = -1
-    for snap in query.stream():
-        payload = snap.to_dict() or {}
-        max_order = max(max_order, _safe_order(payload.get("order_index")))
-    return max_order + 1
+def _user_ref(db, owner_uuid: str):
+    return db.collection(USERS_COLLECTION).document(owner_uuid)
 
 
-def _exercise_snapshot_for_owner(db, *, owner_uuid: str, exercise_id: str):
-    exercise_ref = db.collection(FITNESS_EXERCISES_COLLECTION).document(exercise_id)
-    snap = exercise_ref.get()
-    if not snap.exists:
-        raise ValueError("Exercise not found.")
-    payload = snap.to_dict() or {}
-    if _string(payload.get("owner_uuid")) != owner_uuid:
-        raise ValueError("Exercise not found.")
-    return snap
+def _workout_days_collection(db, owner_uuid: str):
+    return _user_ref(db, owner_uuid).collection(WORKOUT_DAYS_COLLECTION)
 
 
-def list_day_exercises(db, *, owner_uuid: str, workout_date_iso: str) -> list[dict[str, Any]]:
-    query = db.collection(FITNESS_EXERCISES_COLLECTION)
-    query = _where_eq(query, "owner_uuid", owner_uuid)
-    query = _where_eq(query, "workout_date", workout_date_iso)
-    exercises = [_serialize_exercise(snap.id, snap.to_dict() or {}) for snap in query.stream()]
-    exercises.sort(key=lambda item: (_safe_order(item.get("order_index")), _string(item.get("id"))))
-    return exercises
+def _workout_day_ref(db, owner_uuid: str, workout_date_iso: str):
+    return _workout_days_collection(db, owner_uuid).document(workout_date_iso)
 
 
-def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
-    query = _where_eq(db.collection(FITNESS_EXERCISES_COLLECTION), "owner_uuid", owner_uuid)
-    exercises = [_serialize_exercise(snap.id, snap.to_dict() or {}) for snap in query.stream()]
+def _exercise_entries_collection(db, owner_uuid: str, workout_date_iso: str):
+    return _workout_day_ref(db, owner_uuid, workout_date_iso).collection(EXERCISE_ENTRIES_COLLECTION)
+
+
+def _exercise_entry_ref(db, owner_uuid: str, workout_date_iso: str, exercise_id: str):
+    return _exercise_entries_collection(db, owner_uuid, workout_date_iso).document(exercise_id)
+
+
+def _exercise_definitions_collection(db, owner_uuid: str):
+    return _user_ref(db, owner_uuid).collection(EXERCISE_DEFINITIONS_COLLECTION)
+
+
+def _exercise_records_collection(db, owner_uuid: str):
+    return _user_ref(db, owner_uuid).collection(EXERCISE_RECORDS_COLLECTION)
+
+
+def _exercise_entries_group(db):
+    if not hasattr(db, "collection_group"):
+        raise RuntimeError("Firestore collection group queries are not configured.")
+    return db.collection_group(EXERCISE_ENTRIES_COLLECTION)
+
+
+def _entry_storage_doc(
+    *,
+    owner_uuid: str,
+    exercise_id: str,
+    workout_date_iso: str,
+    order_index: int,
+    name: str,
+    category: Any,
+    movement_type: Any,
+    notes: Any,
+    sets: Any,
+    created_at_iso: str,
+    updated_at_iso: str,
+    timezone_name: Any = None,
+    validate_sets: bool = False,
+) -> dict[str, Any]:
+    normalized_category, normalized_type = _coalesce_exercise_metadata(
+        name=name,
+        category=category,
+        movement_type=movement_type,
+    )
+    normalized_sets = _normalize_sets(sets, validate=validate_sets)
+    base = {
+        "owner_uuid": owner_uuid,
+        "uid": owner_uuid,
+        "entry_id": exercise_id,
+        "workout_date": workout_date_iso,
+        "day_id": workout_date_iso,
+        "order_index": order_index,
+        "name": name,
+        "name_key": _doc_key(name),
+        "category": normalized_category,
+        "category_key": _category_key(normalized_category),
+        "movement_type": normalized_type,
+        "movement_type_key": _movement_type_key(normalized_type),
+        "type": normalized_type,
+        "notes": _normalize_notes(notes, max_len=5000),
+        "sets": normalized_sets,
+        "timezone": _normalize_text(timezone_name, max_len=80) or "UTC",
+        "schema_version": FIRESTORE_SCHEMA_VERSION,
+        "created_at_iso": created_at_iso,
+        "updated_at_iso": updated_at_iso,
+    }
+    serialized = _serialize_exercise(exercise_id, base)
+    base.update(
+        {
+            "total_volume": serialized["total_volume"],
+            "total_duration_seconds": serialized["total_duration_seconds"],
+            "total_distance_miles": serialized["total_distance_miles"],
+            "completed_sets": serialized["completed_sets"],
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+    )
+    return base
+
+
+def _serialize_entry_snapshot(snap) -> dict[str, Any]:
+    data = snap.to_dict() or {}
+    return _serialize_exercise(_string(data.get("entry_id")) or snap.id, data)
+
+
+def _list_owner_exercises_for_name(db, *, owner_uuid: str, name_key: str) -> list[dict[str, Any]]:
+    query = _where_eq(_exercise_entries_group(db), "uid", owner_uuid)
+    query = _where_eq(query, "name_key", _doc_key(name_key))
+    exercises = [_serialize_entry_snapshot(snap) for snap in query.stream()]
     exercises.sort(
         key=lambda item: (
             _string(item.get("workout_date")),
@@ -713,75 +798,289 @@ def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
     return exercises
 
 
+def _exercise_snapshot_for_owner(db, *, owner_uuid: str, exercise_id: str):
+    query = _where_eq(_exercise_entries_group(db), "uid", owner_uuid)
+    query = _where_eq(query, "entry_id", _string(exercise_id))
+    for snap in query.stream():
+        payload = snap.to_dict() or {}
+        if _string(payload.get("uid")) == owner_uuid:
+            return snap
+    raise ValueError("Exercise not found.")
+
+
+def list_day_exercises(db, *, owner_uuid: str, workout_date_iso: str) -> list[dict[str, Any]]:
+    exercises = [
+        _serialize_entry_snapshot(snap)
+        for snap in _exercise_entries_collection(db, owner_uuid, workout_date_iso).stream()
+    ]
+    exercises.sort(key=lambda item: (_safe_order(item.get("order_index")), _string(item.get("id"))))
+    return exercises
+
+
+def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
+    query = _where_eq(_exercise_entries_group(db), "uid", owner_uuid)
+    exercises = [_serialize_entry_snapshot(snap) for snap in query.stream()]
+    exercises.sort(
+        key=lambda item: (
+            _string(item.get("workout_date")),
+            _safe_order(item.get("order_index")),
+            _string(item.get("id")),
+        )
+    )
+    return exercises
+
+
+def _list_owner_workout_days(db, *, owner_uuid: str) -> list[dict[str, Any]]:
+    rows = []
+    for snap in _workout_days_collection(db, owner_uuid).stream():
+        data = snap.to_dict() or {}
+        date_iso = _string(data.get("date")) or snap.id
+        if _parse_iso_date(date_iso):
+            rows.append({"id": snap.id, **data, "date": date_iso})
+    rows.sort(key=lambda item: _parse_iso_date(item.get("date")) or date.min)
+    return rows
+
+
+def _next_order_index(db, *, owner_uuid: str, workout_date_iso: str) -> int:
+    day_snap = _workout_day_ref(db, owner_uuid, workout_date_iso).get()
+    stored_next = _safe_order((day_snap.to_dict() or {}).get("next_order_index")) if day_snap.exists else 0
+    max_order = -1
+    for exercise in list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso):
+        max_order = max(max_order, _safe_order(exercise.get("order_index")))
+    return max(stored_next, max_order + 1)
+
+
+def _day_rollup_from_exercises(exercises: list[dict[str, Any]]) -> dict[str, Any]:
+    category_summaries: dict[str, dict[str, Any]] = {}
+    movement_type_summaries: dict[str, dict[str, Any]] = {}
+    total_volume = 0.0
+    total_duration_seconds = 0.0
+    total_distance_miles = 0.0
+    sets_completed = 0
+    for exercise in exercises:
+        category = _normalize_category(exercise.get("category")) or "Other"
+        movement_type = _normalize_movement_type(exercise.get("movement_type")) or "Strength"
+        completed_sets = int(exercise.get("completed_sets") or 0)
+        volume = float(exercise.get("total_volume") or 0)
+        duration = float(exercise.get("total_duration_seconds") or 0)
+        distance = float(exercise.get("total_distance_miles") or 0)
+        total_volume += volume
+        total_duration_seconds += duration
+        total_distance_miles += distance
+        sets_completed += completed_sets
+        for bucket_key, summaries in [(category, category_summaries), (movement_type, movement_type_summaries)]:
+            bucket = summaries.setdefault(
+                bucket_key,
+                {
+                    "exercise_count": 0,
+                    "completed_sets": 0,
+                    "total_volume": 0.0,
+                    "total_duration_seconds": 0.0,
+                    "total_distance_miles": 0.0,
+                },
+            )
+            bucket["exercise_count"] += 1
+            bucket["completed_sets"] += completed_sets
+            bucket["total_volume"] = round(float(bucket["total_volume"]) + volume, 2)
+            bucket["total_duration_seconds"] = round(float(bucket["total_duration_seconds"]) + duration, 2)
+            bucket["total_distance_miles"] = round(float(bucket["total_distance_miles"]) + distance, 3)
+    return {
+        "exercise_count": len(exercises),
+        "sets_completed": sets_completed,
+        "total_volume": round(total_volume, 2),
+        "total_duration_seconds": round(total_duration_seconds, 2),
+        "total_distance_miles": round(total_distance_miles, 3),
+        "category_summaries": category_summaries,
+        "movement_type_summaries": movement_type_summaries,
+        "category_counts": {key: int(value.get("exercise_count") or 0) for key, value in category_summaries.items()},
+        "type_counts": {key: int(value.get("exercise_count") or 0) for key, value in movement_type_summaries.items()},
+    }
+
+
+def _recompute_workout_day(db, *, owner_uuid: str, workout_date_iso: str) -> None:
+    day_ref = _workout_day_ref(db, owner_uuid, workout_date_iso)
+    existing_snap = day_ref.get()
+    existing = existing_snap.to_dict() or {}
+    exercises = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
+    if not exercises:
+        if existing_snap.exists:
+            day_ref.delete()
+        return
+    now_iso = _utc_now_iso()
+    rollup = _day_rollup_from_exercises(exercises)
+    max_order = max((_safe_order(exercise.get("order_index")) for exercise in exercises), default=-1)
+    timezone_name = _normalize_text(existing.get("timezone"), max_len=80) or _normalize_text(exercises[0].get("timezone"), max_len=80) or "UTC"
+    doc = {
+        "uid": owner_uuid,
+        "owner_uuid": owner_uuid,
+        "date": workout_date_iso,
+        "day_id": workout_date_iso,
+        "timezone": timezone_name,
+        "schema_version": FIRESTORE_SCHEMA_VERSION,
+        "next_order_index": max_order + 1,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "updated_at_iso": now_iso,
+        **rollup,
+    }
+    if not existing_snap.exists:
+        doc["created_at"] = firestore.SERVER_TIMESTAMP
+        doc["created_at_iso"] = now_iso
+    else:
+        doc["created_at_iso"] = _string(existing.get("created_at_iso")) or now_iso
+    day_ref.set(doc, merge=True)
+
+
+def _sync_user_exercise_definition(db, *, owner_uuid: str, name_key: str) -> None:
+    normalized_key = _doc_key(name_key)
+    exercises = _list_owner_exercises_for_name(db, owner_uuid=owner_uuid, name_key=normalized_key)
+    definition_ref = _exercise_definitions_collection(db, owner_uuid).document(normalized_key)
+    if not exercises:
+        definition_ref.delete()
+        return
+    latest = max(exercises, key=lambda item: (_string(item.get("updated_at_iso")), _string(item.get("workout_date"))))
+    name = _normalize_text(latest.get("name"), max_len=160)
+    category, movement_type = _coalesce_exercise_metadata(
+        name=name,
+        category=latest.get("category"),
+        movement_type=latest.get("movement_type"),
+    )
+    now_iso = _utc_now_iso()
+    definition_ref.set(
+        {
+            "uid": owner_uuid,
+            "name": name,
+            "name_key": normalized_key,
+            "category": category,
+            "category_key": _category_key(category),
+            "movement_type": movement_type,
+            "movement_type_key": _movement_type_key(movement_type),
+            "type": movement_type,
+            "source": "custom",
+            "session_count": len(exercises),
+            "last_workout_date": _string(latest.get("workout_date")),
+            "schema_version": FIRESTORE_SCHEMA_VERSION,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "updated_at_iso": now_iso,
+        },
+        merge=True,
+    )
+
+
+def _recompute_exercise_record(db, *, owner_uuid: str, name_key: str) -> None:
+    normalized_key = _doc_key(name_key)
+    record_ref = _exercise_records_collection(db, owner_uuid).document(normalized_key)
+    exercises = _list_owner_exercises_for_name(db, owner_uuid=owner_uuid, name_key=normalized_key)
+    records = _aggregate_records(exercises)
+    if not records:
+        record_ref.delete()
+        return
+    record = records[0]
+    record_ref.set(
+        {
+            **record,
+            "uid": owner_uuid,
+            "exercise_name_key": normalized_key,
+            "schema_version": FIRESTORE_SCHEMA_VERSION,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "updated_at_iso": _utc_now_iso(),
+        },
+        merge=True,
+    )
+
+
+def _sync_exercise_rollups(db, *, owner_uuid: str, name_keys: set[str]) -> None:
+    for name_key in {key for key in name_keys if key}:
+        _sync_user_exercise_definition(db, owner_uuid=owner_uuid, name_key=name_key)
+        _recompute_exercise_record(db, owner_uuid=owner_uuid, name_key=name_key)
+
+
 def create_exercise(db, *, owner_uuid: str, payload: dict[str, Any]) -> dict[str, Any]:
     name = _normalize_text(payload.get("name"), max_len=160)
     if not name:
         raise ValueError("Exercise name is required.")
     workout_date_iso = resolve_workout_date(payload.get("workout_date")).isoformat()
-    category, movement_type = _coalesce_exercise_metadata(
+    now_iso = _utc_now_iso()
+    exercise_ref = _exercise_entries_collection(db, owner_uuid, workout_date_iso).document()
+    doc = _entry_storage_doc(
+        owner_uuid=owner_uuid,
+        exercise_id=exercise_ref.id,
+        workout_date_iso=workout_date_iso,
+        order_index=_next_order_index(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso),
         name=name,
         category=payload.get("category"),
         movement_type=payload.get("movement_type"),
+        notes=payload.get("notes"),
+        sets=payload.get("sets"),
+        created_at_iso=now_iso,
+        updated_at_iso=now_iso,
+        timezone_name=payload.get("timezone"),
+        validate_sets=True,
     )
-    now_iso = _utc_now_iso()
-    exercise_ref = db.collection(FITNESS_EXERCISES_COLLECTION).document()
-    doc = {
-        "owner_uuid": owner_uuid,
-        "workout_date": workout_date_iso,
-        "order_index": _next_order_index(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso),
-        "name": name,
-        "category": category,
-        "movement_type": movement_type,
-        "notes": _normalize_notes(payload.get("notes"), max_len=5000),
-        "sets": _normalize_sets(payload.get("sets"), validate=True),
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-        "created_at_iso": now_iso,
-        "updated_at_iso": now_iso,
-    }
+    doc["created_at"] = firestore.SERVER_TIMESTAMP
     exercise_ref.set(doc, merge=True)
+    _recompute_workout_day(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
+    _sync_exercise_rollups(db, owner_uuid=owner_uuid, name_keys={_string(doc.get("name_key"))})
     return _serialize_exercise(exercise_ref.id, doc)
 
 
 def update_exercise(db, *, owner_uuid: str, exercise_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     snap = _exercise_snapshot_for_owner(db, owner_uuid=owner_uuid, exercise_id=exercise_id)
     existing = snap.to_dict() or {}
-    updates: dict[str, Any] = {}
-
+    old_workout_date = _string(existing.get("workout_date"))
+    old_name_key = _doc_key(existing.get("name_key") or existing.get("name"))
     next_name = _normalize_text(payload.get("name"), max_len=160) if "name" in payload else _normalize_text(existing.get("name"), max_len=160)
-    if "name" in payload and not next_name:
+    if not next_name:
         raise ValueError("Exercise name is required.")
-    if "name" in payload:
-        updates["name"] = next_name
+    next_workout_date = resolve_workout_date(payload.get("workout_date")).isoformat() if "workout_date" in payload else old_workout_date
+    next_order = (
+        _next_order_index(db, owner_uuid=owner_uuid, workout_date_iso=next_workout_date)
+        if next_workout_date != old_workout_date
+        else _safe_order(existing.get("order_index"))
+    )
+    now_iso = _utc_now_iso()
+    next_doc = _entry_storage_doc(
+        owner_uuid=owner_uuid,
+        exercise_id=_string(exercise_id),
+        workout_date_iso=next_workout_date,
+        order_index=next_order,
+        name=next_name,
+        category=payload.get("category") if "category" in payload else existing.get("category"),
+        movement_type=payload.get("movement_type") if "movement_type" in payload else existing.get("movement_type"),
+        notes=payload.get("notes") if "notes" in payload else existing.get("notes"),
+        sets=payload.get("sets") if "sets" in payload else existing.get("sets"),
+        created_at_iso=_string(existing.get("created_at_iso")) or now_iso,
+        updated_at_iso=now_iso,
+        timezone_name=payload.get("timezone") if "timezone" in payload else existing.get("timezone"),
+        validate_sets="sets" in payload,
+    )
+    if existing.get("created_at") is not None:
+        next_doc["created_at"] = existing.get("created_at")
+    else:
+        next_doc["created_at"] = firestore.SERVER_TIMESTAMP
 
-    if "category" in payload or "movement_type" in payload or "name" in payload:
-        category, movement_type = _coalesce_exercise_metadata(
-            name=next_name,
-            category=payload.get("category") if "category" in payload else existing.get("category"),
-            movement_type=payload.get("movement_type") if "movement_type" in payload else existing.get("movement_type"),
-        )
-        updates["category"] = category
-        updates["movement_type"] = movement_type
-
-    if "notes" in payload:
-        updates["notes"] = _normalize_notes(payload.get("notes"), max_len=5000)
-    if "sets" in payload:
-        updates["sets"] = _normalize_sets(payload.get("sets"), validate=True)
-    if "workout_date" in payload:
-        workout_date_iso = resolve_workout_date(payload.get("workout_date")).isoformat()
-        updates["workout_date"] = workout_date_iso
-        updates["order_index"] = _next_order_index(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
-
-    updates["updated_at"] = firestore.SERVER_TIMESTAMP
-    updates["updated_at_iso"] = _utc_now_iso()
-    snap.reference.set(updates, merge=True)
-    merged = dict(existing)
-    merged.update(updates)
-    return _serialize_exercise(exercise_id, merged)
+    if next_workout_date == old_workout_date:
+        snap.reference.set(next_doc, merge=True)
+    else:
+        new_ref = _exercise_entry_ref(db, owner_uuid, next_workout_date, _string(exercise_id))
+        batch = db.batch()
+        batch.set(new_ref, next_doc, merge=True)
+        batch.delete(snap.reference)
+        batch.commit()
+    _recompute_workout_day(db, owner_uuid=owner_uuid, workout_date_iso=old_workout_date)
+    if next_workout_date != old_workout_date:
+        _recompute_workout_day(db, owner_uuid=owner_uuid, workout_date_iso=next_workout_date)
+    _sync_exercise_rollups(db, owner_uuid=owner_uuid, name_keys={old_name_key, _string(next_doc.get("name_key"))})
+    return _serialize_exercise(_string(exercise_id), next_doc)
 
 
 def delete_exercise(db, *, owner_uuid: str, exercise_id: str) -> None:
-    _exercise_snapshot_for_owner(db, owner_uuid=owner_uuid, exercise_id=exercise_id).reference.delete()
+    snap = _exercise_snapshot_for_owner(db, owner_uuid=owner_uuid, exercise_id=exercise_id)
+    existing = snap.to_dict() or {}
+    workout_date_iso = _string(existing.get("workout_date"))
+    name_key = _doc_key(existing.get("name_key") or existing.get("name"))
+    snap.reference.delete()
+    _recompute_workout_day(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
+    _sync_exercise_rollups(db, owner_uuid=owner_uuid, name_keys={name_key})
 
 
 def reorder_day_exercises(db, *, owner_uuid: str, workout_date_iso: str, order: list[str]) -> dict[str, Any]:
@@ -799,10 +1098,12 @@ def reorder_day_exercises(db, *, owner_uuid: str, workout_date_iso: str, order: 
         seen.add(exercise_id)
         normalized_ids.append(exercise_id)
 
+    snapshots = []
     for exercise_id in normalized_ids:
         snap = _exercise_snapshot_for_owner(db, owner_uuid=owner_uuid, exercise_id=exercise_id)
         if _string((snap.to_dict() or {}).get("workout_date")) != workout_date_iso:
             raise ValueError("Reorder includes an exercise from a different day.")
+        snapshots.append(snap)
 
     batch = db.batch()
     pending = 0
@@ -818,10 +1119,9 @@ def reorder_day_exercises(db, *, owner_uuid: str, workout_date_iso: str, order: 
             batch = db.batch()
             pending = 0
 
-    for index, exercise_id in enumerate(normalized_ids):
-        exercise_ref = db.collection(FITNESS_EXERCISES_COLLECTION).document(exercise_id)
+    for index, snap in enumerate(snapshots):
         batch.set(
-            exercise_ref,
+            snap.reference,
             {"order_index": index, "updated_at": firestore.SERVER_TIMESTAMP, "updated_at_iso": now_iso},
             merge=True,
         )
@@ -829,6 +1129,7 @@ def reorder_day_exercises(db, *, owner_uuid: str, workout_date_iso: str, order: 
         updates += 1
         commit_if_needed()
     commit_if_needed(force=True)
+    _recompute_workout_day(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
     return {"updated": updates}
 
 
@@ -855,35 +1156,170 @@ def _summary_from_exercises(exercises: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _summary_from_day_doc(data: dict[str, Any] | None, fallback_exercises: list[dict[str, Any]]) -> dict[str, Any]:
+    if not data:
+        return _summary_from_exercises(fallback_exercises)
+    return {
+        "total_volume": round(float(data.get("total_volume") or 0), 2),
+        "sets_completed": int(data.get("sets_completed") or 0),
+        "exercise_count": int(data.get("exercise_count") or 0),
+    }
+
+
 def build_day_payload(db, *, auth_user: dict[str, Any], workout_date: Any = None) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
     selected_date = resolve_workout_date(workout_date)
-    exercises = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=selected_date.isoformat())
+    workout_date_iso = selected_date.isoformat()
+    exercises = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso)
+    day_snap = _workout_day_ref(db, owner_uuid, workout_date_iso).get()
     return {
         "user": profile,
         "day": _day_labels(selected_date),
-        "summary": _summary_from_exercises(exercises),
+        "summary": _summary_from_day_doc(day_snap.to_dict() if day_snap.exists else None, exercises),
         "exercises": exercises,
     }
+
+
+def _default_catalog_docs() -> dict[str, dict[str, Any]]:
+    docs: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(DEFAULT_EXERCISE_LIBRARY):
+        name = _normalize_text(item.get("name"), max_len=160)
+        if not name:
+            continue
+        category, movement_type = _coalesce_exercise_metadata(
+            name=name,
+            category=item.get("category"),
+            movement_type=item.get("movement_type"),
+        )
+        key = _doc_key(name)
+        docs[key] = {
+            "name": name,
+            "name_key": key,
+            "category": category,
+            "category_key": _category_key(category),
+            "movement_type": movement_type,
+            "movement_type_key": _movement_type_key(movement_type),
+            "type": movement_type,
+            "source": "default",
+            "active": True,
+            "aliases": [],
+            "sort_name": key,
+            "sort_order": index,
+            "schema_version": FIRESTORE_SCHEMA_VERSION,
+        }
+    return docs
+
+
+def _ensure_exercise_catalog_seeded(db) -> None:
+    catalog = db.collection(EXERCISE_CATALOG_COLLECTION)
+    expected = _default_catalog_docs()
+    existing = {snap.id: (snap.to_dict() or {}) for snap in catalog.stream()}
+    batch = db.batch()
+    pending = 0
+    now_iso = _utc_now_iso()
+
+    def commit_if_needed(force: bool = False):
+        nonlocal batch, pending
+        if pending == 0:
+            return
+        if force or pending >= _WRITE_BATCH_LIMIT:
+            batch.commit()
+            batch = db.batch()
+            pending = 0
+
+    for key, doc in expected.items():
+        current = existing.get(key) or {}
+        comparable = {field: current.get(field) for field in doc}
+        if comparable == doc:
+            continue
+        payload = {
+            **doc,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "updated_at_iso": now_iso,
+        }
+        if not current:
+            payload["created_at"] = firestore.SERVER_TIMESTAMP
+            payload["created_at_iso"] = now_iso
+        batch.set(catalog.document(key), payload, merge=True)
+        pending += 1
+        commit_if_needed()
+    commit_if_needed(force=True)
+
+
+def _list_catalog_options(db) -> list[dict[str, Any]]:
+    _ensure_exercise_catalog_seeded(db)
+    rows = []
+    for snap in db.collection(EXERCISE_CATALOG_COLLECTION).stream():
+        data = snap.to_dict() or {}
+        if data.get("active") is False:
+            continue
+        name = _normalize_text(data.get("name"), max_len=160)
+        if not name:
+            continue
+        category, movement_type = _coalesce_exercise_metadata(
+            name=name,
+            category=data.get("category"),
+            movement_type=data.get("movement_type"),
+        )
+        rows.append(
+            {
+                "name": name,
+                "category": category,
+                "movement_type": movement_type,
+                "type": movement_type,
+                "source": _string(data.get("source")) or "default",
+                "_rank": "",
+            }
+        )
+    if rows:
+        return rows
+    return [
+        {
+            "name": doc["name"],
+            "category": doc["category"],
+            "movement_type": doc["movement_type"],
+            "type": doc["movement_type"],
+            "source": "default",
+            "_rank": "",
+        }
+        for doc in _default_catalog_docs().values()
+    ]
+
+
+def _list_user_exercise_definition_options(db, *, owner_uuid: str) -> list[dict[str, Any]]:
+    rows = []
+    for snap in _exercise_definitions_collection(db, owner_uuid).stream():
+        data = snap.to_dict() or {}
+        name = _normalize_text(data.get("name"), max_len=160)
+        if not name:
+            continue
+        category, movement_type = _coalesce_exercise_metadata(
+            name=name,
+            category=data.get("category"),
+            movement_type=data.get("movement_type"),
+        )
+        rows.append(
+            {
+                "name": name,
+                "category": category,
+                "movement_type": movement_type,
+                "type": movement_type,
+                "source": "custom",
+                "_rank": _string(data.get("updated_at_iso")) or _string(data.get("last_workout_date")),
+            }
+        )
+    return rows
 
 
 def list_exercise_options(db, *, auth_user: dict[str, Any]) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
     merged: dict[str, dict[str, Any]] = {}
-    for item in DEFAULT_EXERCISE_LIBRARY:
-        name = _normalize_text(item.get("name"), max_len=160)
-        category, movement_type = _coalesce_exercise_metadata(name=name, category=item.get("category"), movement_type=item.get("movement_type"))
-        merged[_exercise_key(name)] = {"name": name, "category": category, "movement_type": movement_type, "type": movement_type, "source": "default", "_rank": ""}
-    for exercise in _list_all_owner_exercises(db, owner_uuid=owner_uuid):
-        name = _normalize_text(exercise.get("name"), max_len=160)
-        if not name:
-            continue
-        key = _exercise_key(name)
-        category, movement_type = _coalesce_exercise_metadata(name=name, category=exercise.get("category"), movement_type=exercise.get("movement_type"))
-        rank = _string(exercise.get("updated_at_iso")) or _string(exercise.get("workout_date"))
+    for item in [*_list_catalog_options(db), *_list_user_exercise_definition_options(db, owner_uuid=owner_uuid)]:
+        key = _doc_key(item.get("name"))
+        rank = _string(item.get("_rank"))
         existing = merged.get(key)
         if existing is None or rank >= _string(existing.get("_rank")):
-            merged[key] = {"name": name, "category": category, "movement_type": movement_type, "type": movement_type, "source": "custom", "_rank": rank}
+            merged[key] = item
 
     exercises = sorted(
         [
@@ -985,6 +1421,22 @@ def _filter_exercises_by_range(exercises: list[dict[str, Any]], *, start_date: d
         if end_date and workout_date > end_date:
             continue
         output.append(exercise)
+    return output
+
+
+def _filter_workout_days_by_range(days: list[dict[str, Any]], *, start_date: date | None, end_date: date | None) -> list[dict[str, Any]]:
+    if start_date is None and end_date is None:
+        return list(days)
+    output = []
+    for day_row in days:
+        workout_date = _parse_iso_date(day_row.get("date"))
+        if workout_date is None:
+            continue
+        if start_date and workout_date < start_date:
+            continue
+        if end_date and workout_date > end_date:
+            continue
+        output.append(day_row)
     return output
 
 
@@ -1152,6 +1604,22 @@ def _build_volume_progression(exercises: list[dict[str, Any]]) -> list[dict[str,
     ]
 
 
+def _build_volume_progression_from_days(days: list[dict[str, Any]], *, category: Any = None) -> list[dict[str, Any]]:
+    normalized_category = _normalize_volume_category(category)
+    rows = []
+    for day_row in sorted(days, key=lambda item: _string(item.get("date"))):
+        date_iso = _string(day_row.get("date"))
+        if not date_iso:
+            continue
+        if normalized_category == DEFAULT_VOLUME_CATEGORY:
+            volume = float(day_row.get("total_volume") or 0)
+        else:
+            category_summary = (day_row.get("category_summaries") or {}).get(normalized_category) or {}
+            volume = float(category_summary.get("total_volume") or 0)
+        rows.append({"date": date_iso, "date_label": _format_date_short(date_iso), "volume": round(volume, 2)})
+    return rows
+
+
 def _exercise_category_label(exercise: dict[str, Any]) -> str:
     return _normalize_category(exercise.get("category")) or "Other"
 
@@ -1173,6 +1641,13 @@ def _filter_exercises_by_category(exercises: list[dict[str, Any]], *, category: 
 def _build_volume_category_options(exercises: list[dict[str, Any]]) -> list[dict[str, str]]:
     labels = sorted({_exercise_category_label(exercise) for exercise in exercises if _exercise_category_label(exercise)})
     return [{"key": DEFAULT_VOLUME_CATEGORY, "label": "All categories"}, *[{"key": label, "label": label} for label in labels]]
+
+
+def _build_volume_category_options_from_days(days: list[dict[str, Any]]) -> list[dict[str, str]]:
+    labels: set[str] = set()
+    for day_row in days:
+        labels.update((day_row.get("category_summaries") or {}).keys())
+    return [{"key": DEFAULT_VOLUME_CATEGORY, "label": "All categories"}, *[{"key": label, "label": label} for label in sorted(labels)]]
 
 
 def _normalize_muscle_split_metric(value: Any) -> str:
@@ -1206,6 +1681,37 @@ def _build_muscle_split(exercises: list[dict[str, Any]], *, metric: Any = None) 
             by_group[category] += 1.0
     if metric_key == "workout_days":
         by_group = defaultdict(float, {group: float(len(days)) for group, days in by_group_days.items()})
+    total = sum(by_group.values())
+    if total <= 0:
+        return []
+    unit_by_metric = {"percent_exercises": "exercises", "total_sets": "sets", "volume": "lbs", "workout_days": "days"}
+    split = []
+    for group, raw_value in by_group.items():
+        value = round(float(raw_value), 2) if metric_key == "volume" else int(round(float(raw_value)))
+        split.append({"group": group, "value": value, "percent": round((float(raw_value) / total) * 100.0, 1), "metric": metric_key, "unit": unit_by_metric.get(metric_key, "")})
+    split.sort(key=lambda item: (-float(item.get("percent") or 0), item.get("group") or ""))
+    return split
+
+
+def _build_muscle_split_from_days(days: list[dict[str, Any]], *, metric: Any = None) -> list[dict[str, Any]]:
+    metric_key = _normalize_muscle_split_metric(metric)
+    by_group: dict[str, float] = defaultdict(float)
+    by_group_days: dict[str, set[str]] = defaultdict(set)
+    for day_row in days:
+        day_iso = _string(day_row.get("date"))
+        for category, summary in (day_row.get("category_summaries") or {}).items():
+            category_label = _normalize_category(category) or "Other"
+            if metric_key == "volume":
+                by_group[category_label] += float(summary.get("total_volume") or 0)
+            elif metric_key == "total_sets":
+                by_group[category_label] += float(summary.get("completed_sets") or 0)
+            elif metric_key == "workout_days":
+                if day_iso:
+                    by_group_days[category_label].add(day_iso)
+            else:
+                by_group[category_label] += float(summary.get("exercise_count") or 0)
+    if metric_key == "workout_days":
+        by_group = defaultdict(float, {group: float(len(day_set)) for group, day_set in by_group_days.items()})
     total = sum(by_group.values())
     if total <= 0:
         return []
@@ -1256,14 +1762,16 @@ def build_analytics_payload(
     volume_category: Any = None,
 ) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
+    all_days = _list_owner_workout_days(db, owner_uuid=owner_uuid)
     all_exercises = _list_all_owner_exercises(db, owner_uuid=owner_uuid)
     range_payload = resolve_analytics_range(range_key=range_key, start_date=start_date, end_date=end_date)
     start = _parse_iso_date(range_payload.get("start_date"))
     end = _parse_iso_date(range_payload.get("end_date"))
+    filtered_days = _filter_workout_days_by_range(all_days, start_date=start, end_date=end)
     filtered = _filter_exercises_by_range(all_exercises, start_date=start, end_date=end)
     records = _aggregate_records(filtered)
 
-    volume_category_options = _build_volume_category_options(all_exercises)
+    volume_category_options = _build_volume_category_options_from_days(all_days)
     normalized_volume_category = _normalize_volume_category(volume_category)
     allowed_categories = {row["key"] for row in volume_category_options}
     if normalized_volume_category not in allowed_categories:
@@ -1272,21 +1780,17 @@ def build_analytics_payload(
     volume_progression_by_category: dict[str, list[dict[str, Any]]] = {}
     for option in volume_category_options:
         category_key = _string(option.get("key")) or DEFAULT_VOLUME_CATEGORY
-        category_filtered = _filter_exercises_by_category(filtered, category=category_key)
-        volume_progression_by_category[category_key] = _build_volume_progression(category_filtered)
+        volume_progression_by_category[category_key] = _build_volume_progression_from_days(filtered_days, category=category_key)
     volume_progression = volume_progression_by_category.get(normalized_volume_category, [])
     total_volume = round(sum(float(item.get("volume") or 0) for item in volume_progression), 2)
 
-    total_sets = 0
-    workout_days: set[str] = set()
+    total_sets = sum(int(day_row.get("sets_completed") or 0) for day_row in filtered_days)
     exercise_names: set[str] = set()
     for exercise in filtered:
-        workout_days.add(_string(exercise.get("workout_date")))
         exercise_names.add(_normalize_text(exercise.get("name"), max_len=160))
-        total_sets += int(_exercise_metrics(exercise).get("completed_sets") or 0)
 
     muscle_split_by_metric = {
-        _string(option["key"]): _build_muscle_split(filtered, metric=option["key"])
+        _string(option["key"]): _build_muscle_split_from_days(filtered_days, metric=option["key"])
         for option in MUSCLE_SPLIT_METRIC_OPTIONS
     }
     normalized_split_metric = _normalize_muscle_split_metric(muscle_split_metric)
@@ -1297,7 +1801,7 @@ def build_analytics_payload(
             "total_volume": total_volume,
             "sets_completed": total_sets,
             "exercise_count": len([name for name in exercise_names if name]),
-            "workout_days": len([day for day in workout_days if day]),
+            "workout_days": len(filtered_days),
             "record_count": len(records),
         },
         "personal_records": records[:3],
@@ -1401,14 +1905,13 @@ def _get_last_sessions_before(db, *, owner_uuid: str, before_date_iso: str, exer
     before_date = _parse_iso_date(before_date_iso)
     if not exercise_names or before_date is None:
         return {}
-    by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for ex in _list_all_owner_exercises(db, owner_uuid=owner_uuid):
-        ex_date = _parse_iso_date(_string(ex.get("workout_date")))
-        if ex_date is not None and ex_date < before_date:
-            by_name[_exercise_key(ex.get("name"))].append(ex)
     result = {}
     for name in exercise_names:
-        sessions = by_name.get(_exercise_key(name), [])
+        sessions = []
+        for ex in _list_owner_exercises_for_name(db, owner_uuid=owner_uuid, name_key=_doc_key(name)):
+            ex_date = _parse_iso_date(_string(ex.get("workout_date")))
+            if ex_date is not None and ex_date < before_date:
+                sessions.append(ex)
         if not sessions:
             continue
         latest = max(sessions, key=lambda item: _string(item.get("workout_date")))
@@ -1430,14 +1933,15 @@ def build_last_sessions_payload(db, *, auth_user: dict[str, Any], date_iso: Any 
 def build_previous_workout_payload(db, *, auth_user: dict[str, Any], before_date: Any = None) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
     before = resolve_workout_date(before_date)
-    candidates = []
-    for ex in _list_all_owner_exercises(db, owner_uuid=owner_uuid):
-        ex_date = _parse_iso_date(_string(ex.get("workout_date")))
-        if ex_date is not None and ex_date < before:
-            candidates.append(ex)
-    if not candidates:
+    previous_days = [
+        day_row
+        for day_row in _list_owner_workout_days(db, owner_uuid=owner_uuid)
+        if (_parse_iso_date(day_row.get("date")) or date.max) < before
+    ]
+    if not previous_days:
         return {"user": profile, "previous_date": None, "previous_date_label": None, "exercises": []}
-    candidates.sort(key=lambda ex: (_string(ex.get("workout_date")), _string(ex.get("updated_at_iso")), _safe_order(ex.get("order_index")), _string(ex.get("id"))), reverse=True)
+    previous_date = _string(previous_days[-1].get("date"))
+    candidates = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=previous_date)
     prev_exercises = []
     seen_names: set[str] = set()
     for ex in candidates:
@@ -1450,7 +1954,6 @@ def build_previous_workout_payload(db, *, auth_user: dict[str, Any], before_date
         prev_exercises.append({**ex, "name": name, "source_date": source_date, "source_date_label": _format_date_short(source_date)})
     if not prev_exercises:
         return {"user": profile, "previous_date": None, "previous_date_label": None, "exercises": []}
-    previous_date = _string(prev_exercises[0].get("source_date"))
     return {"user": profile, "previous_date": previous_date, "previous_date_label": _format_date_short(previous_date), "exercises": prev_exercises}
 
 
@@ -1514,13 +2017,11 @@ def build_exercise_history_payload(db, *, auth_user: dict[str, Any], exercise_na
     name = _normalize_text(exercise_name, max_len=160)
     if not name:
         raise ValueError("exercise_name is required.")
-    name_key = _exercise_key(name)
+    name_key = _doc_key(name)
     category = ""
     movement_type = ""
     sessions = []
-    for ex in _list_all_owner_exercises(db, owner_uuid=owner_uuid):
-        if _exercise_key(ex.get("name")) != name_key:
-            continue
+    for ex in _list_owner_exercises_for_name(db, owner_uuid=owner_uuid, name_key=name_key):
         metrics = _exercise_metrics(ex)
         sessions.append(
             {
@@ -1567,16 +2068,16 @@ def _compute_streaks(workout_date_set: set[date]) -> tuple[int, int]:
 
 def build_workout_calendar_payload(db, *, auth_user: dict[str, Any], range_key: Any = None, start_date: Any = None, end_date: Any = None) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
-    all_exercises = _list_all_owner_exercises(db, owner_uuid=owner_uuid)
+    all_days = _list_owner_workout_days(db, owner_uuid=owner_uuid)
     range_payload = resolve_analytics_range(range_key=range_key, start_date=start_date, end_date=end_date)
     start = _parse_iso_date(range_payload.get("start_date"))
     end = _parse_iso_date(range_payload.get("end_date")) or _utc_now().date()
-    filtered = _filter_exercises_by_range(all_exercises, start_date=start, end_date=end)
+    filtered = _filter_workout_days_by_range(all_days, start_date=start, end_date=end)
     by_date: dict[str, float] = defaultdict(float)
-    for ex in filtered:
-        date_iso = _string(ex.get("workout_date"))
+    for day_row in filtered:
+        date_iso = _string(day_row.get("date"))
         if date_iso:
-            by_date[date_iso] += float(_exercise_metrics(ex).get("total_volume") or 0)
+            by_date[date_iso] += float(day_row.get("total_volume") or 0)
     if start is None:
         workout_dates = [parsed for iso in by_date if (parsed := _parse_iso_date(iso)) is not None]
         start = min(workout_dates) if workout_dates else end

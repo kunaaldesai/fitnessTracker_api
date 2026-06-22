@@ -72,9 +72,45 @@ GET  /api/fitness/workout-calendar/
 
 - `users/{uid}` stores the authenticated user's profile and `fitness_profile`.
 - `users/{uid}/weight_entries/{YYYY-MM-DD}` stores one body-weight entry per calendar date.
-- `fitness_exercises/{exercise_id}` stores logged exercises using `owner_uuid = uid`.
+- `users/{uid}/workout_days/{YYYY-MM-DD}` stores day-level workout summaries and rollups.
+- `users/{uid}/workout_days/{YYYY-MM-DD}/exercise_entries/{entry_id}` stores logged exercise entries.
+- `users/{uid}/exercise_definitions/{exercise_key}` stores user-specific exercise options derived from logged custom exercises.
+- `users/{uid}/exercise_records/{exercise_key}` stores per-exercise personal-record rollups.
+- `exercise_catalog/{exercise_key}` stores the seeded default exercise library.
 
-The old nested workout/user endpoint schema is no longer used.
+The old top-level `fitness_exercises` collection is no longer written by the API. Leave any existing documents untouched unless an explicit cleanup or migration is approved.
+
+Client Firestore access is denied by default in `firestore.rules`; the mobile app talks to Cloud Functions over HTTPS and the Admin SDK bypasses client rules.
+
+## Warehouse
+
+Firestore is the app-serving store. Cross-user product analytics should use a BigQuery export, not mobile app reads or broad Firestore scans.
+
+Recommended Firebase extension: `firebase/firestore-bigquery-export`.
+
+Recommended BigQuery dataset: `logmaxxing_raw` in US multi-region, matching the current Firestore database location family (`nam5`).
+
+Recommended exported collection paths:
+
+```text
+users/{uid}/workout_days
+users/{uid}/workout_days/{dayId}/exercise_entries
+users/{uid}/weight_entries
+users/{uid}/exercise_definitions
+analytics_events
+```
+
+Configured extension instances:
+
+```text
+bq-workout-days           -> users/{uid}/workout_days
+bq-exercise-entries       -> users/{uid}/workout_days/{dayId}/exercise_entries
+bq-weight-entries         -> users/{uid}/weight_entries
+bq-exercise-definitions   -> users/{uid}/exercise_definitions
+bq-analytics-events       -> analytics_events
+```
+
+The extension parameter files live in `extensions/*.env`. They are deploy config, not application secrets.
 
 ## Local Tests
 
@@ -89,11 +125,17 @@ Tests use mocked Firebase Auth and in-memory Firestore. Do not hit live database
 The clean `/api/fitness/**` path is provided by Firebase Hosting rewrites, so deploy Functions and Hosting together after route or rewrite changes:
 
 ```bash
-firebase deploy --only functions,hosting --project fitness-tracker-39bca
+firebase deploy --only functions,hosting,firestore:rules,firestore:indexes --project fitness-tracker-39bca
+```
+
+Deploy the BigQuery export extension manifest with:
+
+```bash
+firebase deploy --only extensions --project fitness-tracker-39bca
 ```
 
 Use `--force` when replacing or deleting old function exports in a non-interactive deploy:
 
 ```bash
-firebase deploy --only functions,hosting --project fitness-tracker-39bca --force
+firebase deploy --only functions,hosting,firestore:rules,firestore:indexes --project fitness-tracker-39bca --force
 ```

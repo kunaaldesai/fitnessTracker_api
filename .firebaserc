@@ -3,5 +3,17 @@
     "default": "fitness-tracker-39bca",
     "staging": "fitness-tracker-39bca",
     "prod": "fitness-tracker-39bca"
+  },
+  "targets": {},
+  "etags": {
+    "fitness-tracker-39bca": {
+      "extensionInstances": {
+        "bq-analytics-events": "7d7efedf70c6a88a13cb2f93e47378d4c4a504007492427ade34278be89368e8",
+        "bq-exercise-definitions": "0055feebe874e30a2b01716b9670ee0a7a88ce361d42b038635b3c12011c0d55",
+        "bq-exercise-entries": "ef22edfd2a6cc964f031f40baa1cd7d6ff46f243a51ccbff7fb85d4372f300f4",
+        "bq-weight-entries": "639ecbb5602f4ff89cb38d3b5110a5b911a52a14e3cfacfba41707d23fb82862",
+        "bq-workout-days": "073807ed1121ebd4a32dfbefec0a6cc05e6f82206dfa41dd11365285f705603f"
+      }
+    }
   }
 }

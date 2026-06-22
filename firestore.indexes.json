@@ -1,4 +1,116 @@
 {
-  "indexes": [],
-  "fieldOverrides": []
+  "indexes": [
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "workout_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "entry_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "name_key", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "category_key", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "movement_type_key", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "name_key", "order": "ASCENDING" },
+        { "fieldPath": "workout_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "category_key", "order": "ASCENDING" },
+        { "fieldPath": "workout_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "movement_type_key", "order": "ASCENDING" },
+        { "fieldPath": "workout_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workout_days",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "exercise_entries",
+      "fieldPath": "sets",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "exercise_entries",
+      "fieldPath": "notes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workout_days",
+      "fieldPath": "category_summaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workout_days",
+      "fieldPath": "movement_type_summaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workout_days",
+      "fieldPath": "category_counts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workout_days",
+      "fieldPath": "type_counts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "exercise_records",
+      "fieldPath": "latest_best_set",
+      "indexes": []
+    }
+  ]
 }

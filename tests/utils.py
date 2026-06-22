@@ -123,11 +123,11 @@ class InMemoryQuery:
 
     def stream(self):
         snapshots = []
-        for doc_id, data in self._collection._docs.items():
+        for doc_id, data, collection in self._collection._iter_docs():
             if self._matches(data):
                 snapshots.append(
                     InMemoryDocumentSnapshot(
-                        InMemoryDocumentReference(self._collection, doc_id),
+                        InMemoryDocumentReference(collection, doc_id),
                         data,
                         exists=True,
                     )
@@ -155,6 +155,25 @@ class InMemoryCollectionReference(InMemoryQuery):
             doc_id = f"doc_{self._db._next_id}"
             self._db._next_id += 1
         return InMemoryDocumentReference(self, str(doc_id))
+
+    def _iter_docs(self):
+        for doc_id, data in self._docs.items():
+            yield doc_id, data, self
+
+
+class InMemoryCollectionGroupReference(InMemoryQuery):
+    def __init__(self, db, name):
+        self._db = db
+        self.name = name
+        super().__init__(self, [])
+
+    def _iter_docs(self):
+        for collection_path, docs in self._db._collections.items():
+            if collection_path.split("/")[-1] != self.name:
+                continue
+            collection = InMemoryCollectionReference(self._db, collection_path)
+            for doc_id, data in docs.items():
+                yield doc_id, data, collection
 
 
 class InMemoryBatch:
@@ -188,6 +207,9 @@ class InMemoryFirestore:
 
     def collection(self, name):
         return InMemoryCollectionReference(self, name)
+
+    def collection_group(self, name):
+        return InMemoryCollectionGroupReference(self, name)
 
     def batch(self):
         return InMemoryBatch()

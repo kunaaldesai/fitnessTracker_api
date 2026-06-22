@@ -324,6 +324,15 @@ class FitnessApiTestCase(unittest.TestCase):
         exercise_id = exercise["id"]
         self.assertEqual(exercise["owner_uuid"], "user-1")
         self.assertEqual(exercise["total_volume"], 1000)
+        self.assertEqual(list(self.db.collection("fitness_exercises").stream()), [])
+        entry_doc = self.db.get_doc("users/user-1/workout_days/2026-06-01/exercise_entries", exercise_id)
+        self.assertEqual(entry_doc["uid"], "user-1")
+        self.assertEqual(entry_doc["entry_id"], exercise_id)
+        self.assertEqual(entry_doc["schema_version"], 2)
+        self.assertEqual(entry_doc["name_key"], "bench press")
+        day_doc = self.db.get_doc("users/user-1/workout_days", "2026-06-01")
+        self.assertEqual(day_doc["exercise_count"], 1)
+        self.assertEqual(day_doc["category_counts"], {"Chest": 1})
 
         update_response = self.client.post(
             f"/api/fitness/exercises/{exercise_id}/update/",
@@ -332,6 +341,13 @@ class FitnessApiTestCase(unittest.TestCase):
         )
         self.assertEqual(update_response.status_code, 200)
         self.assertEqual(update_response.get_json()["exercise"]["notes"], "felt good")
+        self.assertEqual(
+            self.db.get_doc("users/user-1/workout_days/2026-06-01/exercise_entries", exercise_id)["total_volume"],
+            840,
+        )
+        record_doc = self.db.get_doc("users/user-1/exercise_records", "bench press")
+        self.assertEqual(record_doc["exercise_name"], "Bench Press")
+        self.assertEqual(record_doc["max_volume"], 840)
 
         day_response = self.client.get(
             "/api/fitness/day/?date=2026-06-01",
@@ -377,6 +393,9 @@ class FitnessApiTestCase(unittest.TestCase):
         )
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.get_json()["deleted"], True)
+        self.assertEqual(self.db.get_doc("users/user-1/workout_days", "2026-06-01"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/exercise_records", "bench press"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/exercise_definitions", "bench press"), {})
 
     def test_exercise_options_include_default_and_custom(self):
         self.client.post(
@@ -401,6 +420,8 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertIn("Elliptical", names)
         self.assertIn("Pigeon Pose", names)
         self.assertGreaterEqual(payload["default_count"], 250)
+        self.assertEqual(self.db.get_doc("exercise_catalog", "flat dumbbell bench press")["source"], "default")
+        self.assertEqual(self.db.get_doc("users/user-1/exercise_definitions", "custom press")["source"], "custom")
 
     def test_cardio_and_stretching_sets_use_effort_fields(self):
         cardio_response = self.client.post(
@@ -443,6 +464,31 @@ class FitnessApiTestCase(unittest.TestCase):
         day_response = self.client.get("/api/fitness/day/?date=2026-06-01", headers=self.auth_headers())
         self.assertEqual(day_response.get_json()["summary"]["sets_completed"], 2)
         self.assertEqual(day_response.get_json()["summary"]["total_volume"], 0)
+        day_doc = self.db.get_doc("users/user-1/workout_days", "2026-06-01")
+        self.assertEqual(day_doc["type_counts"], {"Cardio": 1, "Stretching": 1})
+        self.assertEqual(day_doc["total_duration_seconds"], 645)
+
+    def test_exercise_update_can_move_nested_entry_between_days(self):
+        created = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Squat", "category": "Quads", "workout_date": "2026-06-01", "sets": [{"weight": 200, "reps": 5}]},
+            headers=self.auth_headers(),
+        ).get_json()["exercise"]
+
+        moved = self.client.post(
+            f"/api/fitness/exercises/{created['id']}/update/",
+            json={"workout_date": "2026-06-02"},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(moved.status_code, 200)
+        self.assertEqual(moved.get_json()["exercise"]["id"], created["id"])
+        self.assertEqual(self.db.get_doc("users/user-1/workout_days/2026-06-01/exercise_entries", created["id"]), {})
+        self.assertEqual(self.db.get_doc("users/user-1/workout_days", "2026-06-01"), {})
+        self.assertEqual(
+            self.db.get_doc("users/user-1/workout_days/2026-06-02/exercise_entries", created["id"])["workout_date"],
+            "2026-06-02",
+        )
 
     def test_exercise_set_limits_are_enforced(self):
         too_many_sets = [{"weight": 100, "reps": 5} for _ in range(41)]
@@ -536,6 +582,26 @@ class FitnessApiTestCase(unittest.TestCase):
                 "sets": [{"weight": 100, "reps": 5, "rpe": None}],
             },
         )
+        self.db.seed(
+            "users/other-user/workout_days/2026-06-01/exercise_entries",
+            "other-v2",
+            {
+                "uid": "other-user",
+                "owner_uuid": "other-user",
+                "entry_id": "other-v2",
+                "workout_date": "2026-06-01",
+                "day_id": "2026-06-01",
+                "order_index": 0,
+                "name": "Secret V2 Lift",
+                "name_key": "secret v2 lift",
+                "category": "Back",
+                "category_key": "back",
+                "movement_type": "Strength",
+                "movement_type_key": "strength",
+                "sets": [{"weight": 100, "reps": 5, "rpe": None}],
+                "schema_version": 2,
+            },
+        )
 
         response = self.client.post(
             "/api/fitness/exercises/other-ex/update/",
@@ -546,6 +612,18 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"], "Exercise not found.")
         self.assertNotEqual(self.db.get_doc("fitness_exercises", "other-ex").get("notes"), "steal")
+
+        response = self.client.post(
+            "/api/fitness/exercises/other-v2/update/",
+            json={"notes": "steal"},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Exercise not found.")
+        self.assertNotEqual(
+            self.db.get_doc("users/other-user/workout_days/2026-06-01/exercise_entries", "other-v2").get("notes"),
+            "steal",
+        )
 
     def test_internal_errors_do_not_leak_details(self):
         fitness_routes.db = BrokenDb()
