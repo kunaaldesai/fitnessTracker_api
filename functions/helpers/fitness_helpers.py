@@ -817,9 +817,13 @@ def list_day_exercises(db, *, owner_uuid: str, workout_date_iso: str) -> list[di
     return exercises
 
 
-def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
-    query = _where_eq(_exercise_entries_group(db), "uid", owner_uuid)
-    exercises = [_serialize_entry_snapshot(snap) for snap in query.stream()]
+def _list_owner_exercises_for_workout_days(db, *, owner_uuid: str, workout_days: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    exercises: list[dict[str, Any]] = []
+    for day_row in workout_days:
+        workout_date_iso = _string(day_row.get("date")) or _string(day_row.get("id"))
+        if _parse_iso_date(workout_date_iso) is None:
+            continue
+        exercises.extend(list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=workout_date_iso))
     exercises.sort(
         key=lambda item: (
             _string(item.get("workout_date")),
@@ -828,6 +832,14 @@ def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
         )
     )
     return exercises
+
+
+def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
+    return _list_owner_exercises_for_workout_days(
+        db,
+        owner_uuid=owner_uuid,
+        workout_days=_list_owner_workout_days(db, owner_uuid=owner_uuid),
+    )
 
 
 def _list_owner_workout_days(db, *, owner_uuid: str) -> list[dict[str, Any]]:
@@ -1762,13 +1774,12 @@ def build_analytics_payload(
     volume_category: Any = None,
 ) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
-    all_days = _list_owner_workout_days(db, owner_uuid=owner_uuid)
-    all_exercises = _list_all_owner_exercises(db, owner_uuid=owner_uuid)
     range_payload = resolve_analytics_range(range_key=range_key, start_date=start_date, end_date=end_date)
     start = _parse_iso_date(range_payload.get("start_date"))
     end = _parse_iso_date(range_payload.get("end_date"))
+    all_days = _list_owner_workout_days(db, owner_uuid=owner_uuid)
     filtered_days = _filter_workout_days_by_range(all_days, start_date=start, end_date=end)
-    filtered = _filter_exercises_by_range(all_exercises, start_date=start, end_date=end)
+    filtered = _list_owner_exercises_for_workout_days(db, owner_uuid=owner_uuid, workout_days=filtered_days)
     records = _aggregate_records(filtered)
 
     volume_category_options = _build_volume_category_options_from_days(all_days)
@@ -1848,13 +1859,13 @@ def build_records_payload(
     end_date: Any = None,
 ) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
-    all_exercises = _list_all_owner_exercises(db, owner_uuid=owner_uuid)
     range_payload = resolve_analytics_range(range_key=range_key, start_date=start_date, end_date=end_date)
-    filtered = _filter_exercises_by_range(
-        all_exercises,
+    filtered_days = _filter_workout_days_by_range(
+        _list_owner_workout_days(db, owner_uuid=owner_uuid),
         start_date=_parse_iso_date(range_payload.get("start_date")),
         end_date=_parse_iso_date(range_payload.get("end_date")),
     )
+    filtered = _list_owner_exercises_for_workout_days(db, owner_uuid=owner_uuid, workout_days=filtered_days)
     records = _aggregate_records(filtered)
     search = _string(query).casefold()
     if search:

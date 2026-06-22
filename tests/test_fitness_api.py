@@ -357,14 +357,19 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(day_response.get_json()["summary"]["exercise_count"], 1)
         self.assertEqual(day_response.get_json()["summary"]["total_volume"], 840)
 
-        records_response = self.client.get("/api/fitness/records/?range=all", headers=self.auth_headers())
-        self.assertEqual(records_response.status_code, 200)
-        self.assertEqual(records_response.get_json()["records"][0]["exercise_name"], "Bench Press")
+        original_collection_group = self.db.collection_group
+        self.db.collection_group = lambda name: (_ for _ in ()).throw(AssertionError("unexpected collection group query"))
+        try:
+            records_response = self.client.get("/api/fitness/records/?range=all", headers=self.auth_headers())
+            self.assertEqual(records_response.status_code, 200)
+            self.assertEqual(records_response.get_json()["records"][0]["exercise_name"], "Bench Press")
 
-        analytics_response = self.client.get("/api/fitness/analytics/?range=all", headers=self.auth_headers())
-        self.assertEqual(analytics_response.status_code, 200)
-        self.assertEqual(analytics_response.get_json()["summary"]["total_volume"], 840)
-        self.assertEqual(analytics_response.get_json()["muscle_split"][0]["group"], "Chest")
+            analytics_response = self.client.get("/api/fitness/analytics/?range=all", headers=self.auth_headers())
+            self.assertEqual(analytics_response.status_code, 200)
+            self.assertEqual(analytics_response.get_json()["summary"]["total_volume"], 840)
+            self.assertEqual(analytics_response.get_json()["muscle_split"][0]["group"], "Chest")
+        finally:
+            self.db.collection_group = original_collection_group
 
         history_response = self.client.get(
             "/api/fitness/exercise-history/?name=Bench%20Press",
@@ -422,6 +427,50 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertGreaterEqual(payload["default_count"], 250)
         self.assertEqual(self.db.get_doc("exercise_catalog", "flat dumbbell bench press")["source"], "default")
         self.assertEqual(self.db.get_doc("users/user-1/exercise_definitions", "custom press")["source"], "custom")
+
+    def test_custom_exercise_options_are_scoped_to_current_user(self):
+        def auth_for_token(token):
+            if token == "user-2-token":
+                return {"uid": "user-2", "email": "user2@example.com", "name": "User Two"}
+            return {"uid": "user-1", "email": "user1@example.com", "name": "User One"}
+
+        fake_auth.verify_id_token.side_effect = auth_for_token
+
+        create_response = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={
+                "name": "Private Joke Lift",
+                "category": "Back",
+                "movement_type": "Strength",
+                "workout_date": "2026-06-01",
+            },
+            headers=self.auth_headers("user-1-token"),
+        )
+        self.assertEqual(create_response.status_code, 200)
+
+        user_one_response = self.client.get(
+            "/api/fitness/exercise-options/",
+            headers=self.auth_headers("user-1-token"),
+        )
+        self.assertEqual(user_one_response.status_code, 200)
+        user_one_names = {row["name"] for row in user_one_response.get_json()["exercises"]}
+        self.assertIn("Private Joke Lift", user_one_names)
+
+        user_two_response = self.client.get(
+            "/api/fitness/exercise-options/",
+            headers=self.auth_headers("user-2-token"),
+        )
+        self.assertEqual(user_two_response.status_code, 200)
+        user_two_names = {row["name"] for row in user_two_response.get_json()["exercises"]}
+        self.assertIn("Flat Dumbbell Bench Press", user_two_names)
+        self.assertNotIn("Private Joke Lift", user_two_names)
+
+        self.assertEqual(self.db.get_doc("exercise_catalog", "private joke lift"), {})
+        self.assertEqual(
+            self.db.get_doc("users/user-1/exercise_definitions", "private joke lift")["source"],
+            "custom",
+        )
+        self.assertEqual(self.db.get_doc("users/user-2/exercise_definitions", "private joke lift"), {})
 
     def test_cardio_and_stretching_sets_use_effort_fields(self):
         cardio_response = self.client.post(
