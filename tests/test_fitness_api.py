@@ -414,8 +414,13 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         names = {row["name"] for row in payload["exercises"]}
+        option_by_name = {row["name"]: row for row in payload["exercises"]}
         self.assertIn("Flat Dumbbell Bench Press", names)
         self.assertIn("Custom Press", names)
+        self.assertEqual(option_by_name["Custom Press"]["session_count"], 1)
+        self.assertEqual(option_by_name["Custom Press"]["last_workout_date"], "2026-06-01")
+        self.assertEqual(option_by_name["Custom Press"]["last_workout_date_label"], "Jun 1, 2026")
+        self.assertEqual(option_by_name["Flat Dumbbell Bench Press"]["session_count"], 0)
         self.assertIn("Forearms", payload["categories"])
         self.assertIn("Calves", payload["categories"])
         self.assertIn("Adductors", payload["categories"])

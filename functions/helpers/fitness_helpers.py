@@ -1317,6 +1317,9 @@ def _list_user_exercise_definition_options(db, *, owner_uuid: str) -> list[dict[
                 "movement_type": movement_type,
                 "type": movement_type,
                 "source": "custom",
+                "session_count": _safe_int(data.get("session_count")) or 0,
+                "last_workout_date": _string(data.get("last_workout_date")),
+                "last_workout_date_label": _format_date_short(_string(data.get("last_workout_date"))),
                 "_rank": _string(data.get("updated_at_iso")) or _string(data.get("last_workout_date")),
             }
         )
@@ -1341,6 +1344,9 @@ def list_exercise_options(db, *, auth_user: dict[str, Any]) -> dict[str, Any]:
                 "movement_type": item["movement_type"],
                 "type": item["movement_type"],
                 "source": item.get("source") or "custom",
+                "session_count": _safe_int(item.get("session_count")) or 0,
+                "last_workout_date": _string(item.get("last_workout_date")),
+                "last_workout_date_label": _string(item.get("last_workout_date_label")),
             }
             for item in merged.values()
         ],
