@@ -19,6 +19,9 @@ class FitnessApiTestCase(unittest.TestCase):
     def setUp(self):
         self.db = InMemoryFirestore()
         fitness_routes.db = self.db
+        self._original_rate_limit_rules = dict(fitness_routes.RATE_LIMIT_RULES)
+        fitness_routes.reset_rate_limit_state_for_tests()
+        self.addCleanup(self._restore_rate_limit_rules)
         fake_auth.verify_id_token.reset_mock()
         fake_auth.verify_id_token.side_effect = None
         fake_auth.verify_id_token.return_value = {
@@ -26,11 +29,18 @@ class FitnessApiTestCase(unittest.TestCase):
             "email": "user@example.com",
             "name": "Ada Lovelace",
         }
+        fake_auth.delete_user.reset_mock()
+        fake_auth.delete_user.side_effect = None
         self.app = fitness_routes.create_fitness_app()
         self.client = self.app.test_client()
 
     def auth_headers(self, token="valid-token"):
         return {"Authorization": f"Bearer {token}"}
+
+    def _restore_rate_limit_rules(self):
+        fitness_routes.RATE_LIMIT_RULES.clear()
+        fitness_routes.RATE_LIMIT_RULES.update(self._original_rate_limit_rules)
+        fitness_routes.reset_rate_limit_state_for_tests()
 
     def test_missing_auth_is_rejected(self):
         response = self.client.get("/api/fitness/profile/")
@@ -45,6 +55,29 @@ class FitnessApiTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.get_json()["error"], "Invalid Firebase ID token.")
+
+    def test_authenticated_requests_are_rate_limited(self):
+        fitness_routes.RATE_LIMIT_RULES["user"] = fitness_routes.RateLimitRule(limit=2, window_seconds=60)
+
+        first = self.client.get("/api/fitness/profile/", headers=self.auth_headers())
+        second = self.client.get("/api/fitness/profile/", headers=self.auth_headers())
+        third = self.client.get("/api/fitness/profile/", headers=self.auth_headers())
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(third.status_code, 429)
+        self.assertEqual(third.get_json()["error"], "Too many requests. Please try again shortly.")
+        self.assertEqual(third.headers["Retry-After"], "60")
+
+    def test_authenticated_writes_are_rate_limited(self):
+        fitness_routes.RATE_LIMIT_RULES["user_write"] = fitness_routes.RateLimitRule(limit=1, window_seconds=60)
+
+        first = self.client.post("/api/fitness/profile/", json={"first_name": "Ada"}, headers=self.auth_headers())
+        second = self.client.post("/api/fitness/profile/", json={"first_name": "Grace"}, headers=self.auth_headers())
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(self.db.get_doc("users", "user-1")["first_name"], "Ada")
 
     def test_profile_get_returns_defaults_and_creates_user_doc(self):
         response = self.client.get("/api/fitness/profile/", headers=self.auth_headers())
@@ -306,6 +339,51 @@ class FitnessApiTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("future", response.get_json()["error"])
+
+    def test_account_delete_requires_confirmation(self):
+        self.db.seed("users", "user-1", {"email": "user@example.com"})
+
+        response = self.client.post("/api/fitness/profile/delete-account/", json={}, headers=self.auth_headers())
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("confirm", response.get_json()["error"])
+        self.assertEqual(self.db.get_doc("users", "user-1")["email"], "user@example.com")
+        fake_auth.delete_user.assert_not_called()
+
+    def test_account_delete_removes_user_data_and_auth_user(self):
+        self.db.seed("users", "user-1", {"email": "user@example.com"})
+        self.db.seed("users/user-1/weight_entries", "2026-06-01", {"weight_lbs": 180})
+        self.db.seed("users/user-1/exercise_definitions", "bench press", {"name": "Bench Press"})
+        self.db.seed("users/user-1/exercise_records", "bench press", {"max_volume": 1000})
+        self.db.seed("users/user-1/workout_days", "2026-06-01", {"exercise_count": 1})
+        self.db.seed(
+            "users/user-1/workout_days/2026-06-01/exercise_entries",
+            "entry-1",
+            {"uid": "user-1", "name": "Bench Press"},
+        )
+        self.db.seed("users/other-user/weight_entries", "2026-06-01", {"weight_lbs": 200})
+
+        response = self.client.post(
+            "/api/fitness/profile/delete-account/",
+            json={"confirm": "DELETE"},
+            headers=self.auth_headers(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["deleted"], True)
+        self.assertEqual(data["uid"], "user-1")
+        self.assertEqual(self.db.get_doc("users", "user-1"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/weight_entries", "2026-06-01"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/exercise_definitions", "bench press"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/exercise_records", "bench press"), {})
+        self.assertEqual(self.db.get_doc("users/user-1/workout_days", "2026-06-01"), {})
+        self.assertEqual(
+            self.db.get_doc("users/user-1/workout_days/2026-06-01/exercise_entries", "entry-1"),
+            {},
+        )
+        self.assertEqual(self.db.get_doc("users/other-user/weight_entries", "2026-06-01")["weight_lbs"], 200)
+        fake_auth.delete_user.assert_called_once_with("user-1")
 
     def test_exercise_crud_day_records_analytics_history_calendar(self):
         create_response = self.client.post(

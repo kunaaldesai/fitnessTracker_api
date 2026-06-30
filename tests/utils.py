@@ -14,7 +14,7 @@ def ensure_functions_on_path():
 
 
 def install_fake_firebase(fake_db):
-    fake_auth = types.SimpleNamespace(verify_id_token=MagicMock())
+    fake_auth = types.SimpleNamespace(verify_id_token=MagicMock(), delete_user=MagicMock())
     fake_firestore = types.SimpleNamespace(
         SERVER_TIMESTAMP="SERVER_TIMESTAMP",
         Query=types.SimpleNamespace(DESCENDING="DESCENDING"),

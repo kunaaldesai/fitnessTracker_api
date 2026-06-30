@@ -4,10 +4,15 @@ import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from firebase_admin import firestore
+from firebase_admin import auth, firestore
 
 USERS_COLLECTION = "users"
 WEIGHT_ENTRIES_COLLECTION = "weight_entries"
+WORKOUT_DAYS_COLLECTION = "workout_days"
+EXERCISE_ENTRIES_COLLECTION = "exercise_entries"
+EXERCISE_DEFINITIONS_COLLECTION = "exercise_definitions"
+EXERCISE_RECORDS_COLLECTION = "exercise_records"
+DELETE_ACCOUNT_CONFIRMATION = "DELETE"
 
 DEFAULT_BMR_FORMULA = "katch_mcardle"
 DEFAULT_ACTIVITY_LEVEL = "sedentary"
@@ -945,4 +950,51 @@ def delete_weight_entry_payload(db, *, auth_user: dict[str, Any], entry_id: str)
         "deleted": True,
         "entry_id": _string(entry_id),
         "weight_history": build_weight_history_payload(db, auth_user=auth_user),
+    }
+
+
+def _delete_collection_documents(collection_ref) -> int:
+    deleted_count = 0
+    for snap in list(collection_ref.stream()):
+        snap.reference.delete()
+        deleted_count += 1
+    return deleted_count
+
+
+def _delete_auth_user(uid: str) -> None:
+    try:
+        auth.delete_user(uid)
+    except Exception as exc:
+        if exc.__class__.__name__ == "UserNotFoundError":
+            return
+        raise
+
+
+def delete_account_payload(db, *, auth_user: dict[str, Any], payload: dict[str, Any] | None) -> dict[str, Any]:
+    uid = _string((auth_user or {}).get("uid"))
+    if not uid:
+        raise RuntimeError("Unable to resolve authenticated user.")
+    if _string((payload or {}).get("confirm")) != DELETE_ACCOUNT_CONFIRMATION:
+        raise ValueError("Account deletion requires confirm to be DELETE.")
+
+    user_ref = db.collection(USERS_COLLECTION).document(uid)
+    deleted_count = 0
+    deleted_count += _delete_collection_documents(user_ref.collection(WEIGHT_ENTRIES_COLLECTION))
+    deleted_count += _delete_collection_documents(user_ref.collection(EXERCISE_DEFINITIONS_COLLECTION))
+    deleted_count += _delete_collection_documents(user_ref.collection(EXERCISE_RECORDS_COLLECTION))
+
+    for day_snap in list(user_ref.collection(WORKOUT_DAYS_COLLECTION).stream()):
+        deleted_count += _delete_collection_documents(day_snap.reference.collection(EXERCISE_ENTRIES_COLLECTION))
+        day_snap.reference.delete()
+        deleted_count += 1
+
+    if user_ref.get().exists:
+        user_ref.delete()
+        deleted_count += 1
+
+    _delete_auth_user(uid)
+    return {
+        "deleted": True,
+        "uid": uid,
+        "deleted_firestore_documents": deleted_count,
     }

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import logging
+import math
+import time
+from collections import deque
+from dataclasses import dataclass
+from threading import Lock
 from typing import Any, Callable
 
 from flask import Flask, Response, g, jsonify, request
@@ -26,10 +31,27 @@ from helpers.fitness_profile_helpers import (
     build_fitness_profile_payload,
     build_weight_history_payload,
     create_weight_entry_payload,
+    delete_account_payload,
     delete_weight_entry_payload,
     save_fitness_profile_payload,
     update_weight_entry_payload,
 )
+
+
+@dataclass(frozen=True)
+class RateLimitRule:
+    limit: int
+    window_seconds: int
+
+
+RATE_LIMIT_RULES: dict[str, RateLimitRule] = {
+    "ip": RateLimitRule(limit=600, window_seconds=60),
+    "user": RateLimitRule(limit=300, window_seconds=60),
+    "user_write": RateLimitRule(limit=180, window_seconds=60),
+}
+_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
+_RATE_LIMIT_LOCK = Lock()
+_MAX_RATE_LIMIT_BUCKETS = 10000
 
 
 def _ok(payload: dict[str, Any] | None = None, status: int = 200):
@@ -62,6 +84,56 @@ def _read_json_body() -> dict[str, Any]:
     return data
 
 
+def _client_ip() -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip() or "unknown"
+    return request.remote_addr or "unknown"
+
+
+def _rate_limit_check(bucket_key: str, rule: RateLimitRule, *, now: float | None = None) -> tuple[bool, int]:
+    current_time = time.monotonic() if now is None else now
+    cutoff = current_time - rule.window_seconds
+    with _RATE_LIMIT_LOCK:
+        if len(_RATE_LIMIT_BUCKETS) > _MAX_RATE_LIMIT_BUCKETS:
+            stale_keys = [
+                key for key, bucket in _RATE_LIMIT_BUCKETS.items()
+                if not bucket or bucket[-1] <= cutoff
+            ]
+            for key in stale_keys:
+                _RATE_LIMIT_BUCKETS.pop(key, None)
+            while len(_RATE_LIMIT_BUCKETS) > _MAX_RATE_LIMIT_BUCKETS:
+                _RATE_LIMIT_BUCKETS.pop(next(iter(_RATE_LIMIT_BUCKETS)))
+
+        bucket = _RATE_LIMIT_BUCKETS.setdefault(bucket_key, deque())
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+        if len(bucket) >= rule.limit:
+            retry_after = max(1, math.ceil((bucket[0] + rule.window_seconds) - current_time))
+            return False, retry_after
+        bucket.append(current_time)
+        return True, 0
+
+
+def _rate_limited_response(retry_after: int):
+    response, status = _error("Too many requests. Please try again shortly.", 429)
+    response.headers["Retry-After"] = str(retry_after)
+    return response, status
+
+
+def _enforce_rate_limit(bucket_key: str, rule_name: str):
+    rule = RATE_LIMIT_RULES[rule_name]
+    allowed, retry_after = _rate_limit_check(bucket_key, rule)
+    if allowed:
+        return None
+    return _rate_limited_response(retry_after)
+
+
+def reset_rate_limit_state_for_tests() -> None:
+    with _RATE_LIMIT_LOCK:
+        _RATE_LIMIT_BUCKETS.clear()
+
+
 def _handle(handler: Callable[[], dict[str, Any]]):
     try:
         return _ok(handler())
@@ -86,10 +158,20 @@ def create_fitness_app():
     def attach_firebase_user():
         if request.method == "OPTIONS":
             return Response(status=204)
+        ip_limited = _enforce_rate_limit(f"ip:{_client_ip()}", "ip")
+        if ip_limited is not None:
+            return ip_limited
         try:
             g.auth_user = verify_authorization_header(request.headers.get("Authorization"))
         except AuthError as exc:
             return _error(str(exc), 401)
+        user_limited = _enforce_rate_limit(f"user:{g.auth_user['uid']}", "user")
+        if user_limited is not None:
+            return user_limited
+        if request.method == "POST":
+            write_limited = _enforce_rate_limit(f"user_write:{g.auth_user['uid']}", "user_write")
+            if write_limited is not None:
+                return write_limited
         return None
 
     @fitness_app.after_request
@@ -207,6 +289,16 @@ def create_fitness_app():
                 db,
                 auth_user=g.auth_user,
                 entry_id=entry_id,
+            )
+        )
+
+    @fit_route("/profile/delete-account/", methods=["POST"])
+    def fitness_delete_account_api():
+        return _handle(
+            lambda: delete_account_payload(
+                db,
+                auth_user=g.auth_user,
+                payload=_read_json_body(),
             )
         )
 
