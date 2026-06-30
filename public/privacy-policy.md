@@ -5,7 +5,7 @@ Effective date: June 23, 2026
 This Privacy Policy explains how Logmaxxing ("Logmaxxing", "we", "us", or "our") collects, uses, stores, and protects information when you use the mobile application listed on Google Play as "Logmaxxing - Workout Log" and any related website or backend service that supports the app.
 
 - Website: https://fitness-tracker-39bca.web.app
-- Contact email: kunaaldesai13@gmail.com
+- Contact email: me@kunaaldesai.com
 - Developer: Kunaal Desai
 
 ## 1. What Logmaxxing Does
@@ -185,7 +185,7 @@ For Google Play's Data safety form, the current codebase indicates the following
 - Data collected: name, email address, user ID, profile photo URL if provided, fitness and health-related workout/body-metric data, app activity related to workout logs and analytics, and basic diagnostics/security logs.
 - Data sharing: data is processed by Google/Firebase/Google Cloud service providers to provide app functionality. No sale of personal information and no third-party advertising use is currently implemented.
 - Data security: data is transmitted over HTTPS. Account data is protected by Firebase Authentication. Direct Firestore client access is denied.
-- Data deletion: users can delete their account in the app from the gear icon settings dialog. Users can also request account deletion at https://fitness-tracker-39bca.web.app/delete-account.html or by contacting kunaaldesai13@gmail.com.
+- Data deletion: users can delete their account in the app from the gear icon settings dialog. Users can also request account deletion at https://fitness-tracker-39bca.web.app/delete-account.html or by contacting me@kunaaldesai.com.
 
 This summary is provided to help complete the Play Console form, but you should confirm each answer against your deployed production configuration before submission.
 
@@ -199,4 +199,4 @@ For privacy questions or requests, contact:
 
 Kunaal Desai  
 https://fitness-tracker-39bca.web.app  
-kunaaldesai13@gmail.com
+me@kunaaldesai.com
