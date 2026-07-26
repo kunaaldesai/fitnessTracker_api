@@ -26,6 +26,7 @@ _WRITE_BATCH_LIMIT = 400
 MAX_CALENDAR_DAYS = 731
 MAX_SETS_PER_EXERCISE = 40
 MAX_COPY_EXERCISES = 75
+MAX_RECENT_COPY_EXERCISES = 10
 MAX_EXERCISE_WEIGHT_LBS = 2000.0
 MAX_EXERCISE_REPS = 1000
 MAX_EXERCISE_DURATION_SECONDS = 24 * 60 * 60
@@ -473,6 +474,12 @@ def _where_eq(query, field_path: str, value: Any):
     return query.where(field_path, "==", value)
 
 
+def _where_lt(query, field_path: str, value: Any):
+    if FieldFilter is not None:
+        return query.where(filter=FieldFilter(field_path, "<", value))
+    return query.where(field_path, "<", value)
+
+
 def _normalize_category(value: Any) -> str:
     raw = _normalize_text(value, max_len=80)
     if not raw:
@@ -840,6 +847,22 @@ def _list_all_owner_exercises(db, *, owner_uuid: str) -> list[dict[str, Any]]:
         owner_uuid=owner_uuid,
         workout_days=_list_owner_workout_days(db, owner_uuid=owner_uuid),
     )
+
+
+def _list_owner_exercises_before(db, *, owner_uuid: str, before_date_iso: str) -> list[dict[str, Any]]:
+    query = _where_eq(_exercise_entries_group(db), "uid", owner_uuid)
+    query = _where_lt(query, "workout_date", before_date_iso)
+    exercises = [_serialize_entry_snapshot(snap) for snap in query.stream()]
+    exercises.sort(
+        key=lambda item: (
+            _parse_iso_date(_string(item.get("workout_date"))) or date.min,
+            _safe_order(item.get("order_index")),
+            _string(item.get("updated_at_iso")),
+            _string(item.get("id")),
+        ),
+        reverse=True,
+    )
+    return exercises
 
 
 def _list_owner_workout_days(db, *, owner_uuid: str) -> list[dict[str, Any]]:
@@ -1950,16 +1973,10 @@ def build_last_sessions_payload(db, *, auth_user: dict[str, Any], date_iso: Any 
 def build_previous_workout_payload(db, *, auth_user: dict[str, Any], before_date: Any = None) -> dict[str, Any]:
     profile, owner_uuid = _owner_uuid_from_user(db, auth_user)
     before = resolve_workout_date(before_date)
-    previous_days = [
-        day_row
-        for day_row in _list_owner_workout_days(db, owner_uuid=owner_uuid)
-        if (_parse_iso_date(day_row.get("date")) or date.max) < before
-    ]
-    if not previous_days:
+    candidates = _list_owner_exercises_before(db, owner_uuid=owner_uuid, before_date_iso=before.isoformat())
+    if not candidates:
         return {"user": profile, "previous_date": None, "previous_date_label": None, "exercises": []}
-    previous_date = _string(previous_days[-1].get("date"))
-    candidates = list_day_exercises(db, owner_uuid=owner_uuid, workout_date_iso=previous_date)
-    prev_exercises = []
+    recent_exercises = []
     seen_names: set[str] = set()
     for ex in candidates:
         name = _normalize_text(ex.get("name"), max_len=160)
@@ -1968,10 +1985,13 @@ def build_previous_workout_payload(db, *, auth_user: dict[str, Any], before_date
             continue
         seen_names.add(key)
         source_date = _string(ex.get("workout_date"))
-        prev_exercises.append({**ex, "name": name, "source_date": source_date, "source_date_label": _format_date_short(source_date)})
-    if not prev_exercises:
+        recent_exercises.append({**ex, "name": name, "source_date": source_date, "source_date_label": _format_date_short(source_date)})
+        if len(recent_exercises) >= MAX_RECENT_COPY_EXERCISES:
+            break
+    if not recent_exercises:
         return {"user": profile, "previous_date": None, "previous_date_label": None, "exercises": []}
-    return {"user": profile, "previous_date": previous_date, "previous_date_label": _format_date_short(previous_date), "exercises": prev_exercises}
+    latest_date = _string(recent_exercises[0].get("source_date"))
+    return {"user": profile, "previous_date": latest_date, "previous_date_label": _format_date_short(latest_date), "exercises": recent_exercises}
 
 
 def copy_exercises_from_date_payload(db, *, auth_user: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

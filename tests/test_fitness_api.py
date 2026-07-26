@@ -700,6 +700,51 @@ class FitnessApiTestCase(unittest.TestCase):
         self.assertEqual(oversized_copy.status_code, 400)
         self.assertIn("copy at most 75", oversized_copy.get_json()["error"])
 
+    def test_previous_workout_returns_latest_ten_distinct_recent_exercises(self):
+        for index in range(12):
+            response = self.client.post(
+                "/api/fitness/exercises/create/",
+                json={
+                    "name": f"Move {index}",
+                    "category": "Back",
+                    "workout_date": f"2026-06-{index + 1:02d}",
+                    "sets": [{"weight": 100 + index, "reps": 5}],
+                },
+                headers=self.auth_headers(),
+            )
+            self.assertEqual(response.status_code, 200)
+
+        latest_move_zero = self.client.post(
+            "/api/fitness/exercises/create/",
+            json={"name": "Move 0", "category": "Back", "workout_date": "2026-06-15", "sets": [{"weight": 777, "reps": 3}]},
+            headers=self.auth_headers(),
+        ).get_json()["exercise"]
+
+        response = self.client.get(
+            "/api/fitness/exercises/previous-workout/?before=2026-06-20",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["previous_date"], "2026-06-15")
+        self.assertEqual(len(data["exercises"]), 10)
+        self.assertEqual(data["exercises"][0]["id"], latest_move_zero["id"])
+        self.assertEqual(data["exercises"][0]["source_date"], "2026-06-15")
+        self.assertEqual(data["exercises"][0]["sets"][0]["weight"], 777)
+        self.assertEqual([row["name"] for row in data["exercises"]], ["Move 0", "Move 11", "Move 10", "Move 9", "Move 8", "Move 7", "Move 6", "Move 5", "Move 4", "Move 3"])
+
+        copy_response = self.client.post(
+            "/api/fitness/exercises/copy-from-date/",
+            json={"target_date": "2026-06-20", "exercise_ids": [data["exercises"][0]["id"]]},
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(copy_response.status_code, 200)
+        copied = copy_response.get_json()["created"][0]
+        self.assertEqual(copied["name"], "Move 0")
+        self.assertEqual(copied["workout_date"], "2026-06-20")
+        self.assertEqual(copied["sets"][0]["weight"], 777)
+        self.assertEqual(copied["sets"][0]["reps"], 3)
+
     def test_ownership_is_enforced(self):
         self.db.seed(
             "fitness_exercises",

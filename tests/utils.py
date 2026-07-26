@@ -136,9 +136,14 @@ class InMemoryQuery:
 
     def _matches(self, data):
         for field, op, value in self._filters:
-            if op != "==":
-                return False
-            if data.get(field) != value:
+            actual = data.get(field)
+            if op == "==":
+                if actual != value:
+                    return False
+            elif op == "<":
+                if actual is None or not actual < value:
+                    return False
+            else:
                 return False
         return True
 
